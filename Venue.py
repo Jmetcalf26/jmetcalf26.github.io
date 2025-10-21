@@ -1,11 +1,26 @@
 import requests
 from bs4 import BeautifulSoup
 
-url = 'https://www.930.com/#upcoming-shows-title'
-
-headers = {
+class Venue:
+    def __init__(self, url, name=""):
+        self.url = url
+        self.name = name
+        self.headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'
 }
+
+    def getHTML(self):
+        r = requests.get(self.url, self.headers)
+        with open('pages'+self.name+'.html', 'wb') as of:
+            of.write(r.content)
+
+        return BeautifulSoup(r.content, 'html.parser')
+        
+    def parse(self):
+        pass
+
+url = 'https://www.930.com/#upcoming-shows-title'
+
 r = requests.get(url, headers=headers)
 with open('pages/930.html', 'wb') as of:
     of.write(r.content)
