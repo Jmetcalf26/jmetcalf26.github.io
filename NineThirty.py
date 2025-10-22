@@ -1,50 +1,46 @@
-import requests
 from bs4 import BeautifulSoup
 from Venue import Venue
 
-url = 'https://www.930.com/#upcoming-shows-title'
+#url = 'https://www.930.com'
 
 class NineThirty(Venue):
     def __init__(self, url, name=""):
         super().__init__(url, name)
+
     def parse(self, soup):
-        print(soup.text.strip())
         upcoming_shows = soup.select(".list-view-item")
-        print("IN NINETHIRTY.PARSE!")
 
         for a in upcoming_shows:
-            print(a)
+            show = {}
             dates = a.find('span', class_="dates")
             if dates is not None:
-                print("Date:", dates.text.strip().split())
+                date = dates.text.strip().split()
+                print("Date:", date)
+                show['dayOfWeek'] = date[0]
+                show['day'] = date[1]
+                show['month'] = date[2]
+            
             doors = a.find('span', class_="doors")
             if doors is not None:
-                print("Doors:", doors.text.strip())
+                doors = doors.text.strip()
+                print("Doors:", doors)
+                show['doors'] = doors
             artist_info = a.find(class_="headliners")
             supports = a.find(class_="supports")
             if artist_info is not None:
-                print("Artist:", artist_info.text.strip())
-            else:
-                print("Artist: N/A")
+                ai = artist_info.text.strip()
+                print("Artist:", ai)
+                show['artist'] = ai
             if supports is not None:
-                print("Opener:", supports.text.strip())
-            else:
-                print("Opener: N/A")
+                opener = supports.text.strip()
+                print("Opener:", opener)
+                show['opener'] = opener
             ticket_price = a.find("section", class_="ticket-price")
             sold_out = a.find(class_="sold-out")
             if sold_out is not None:
                 print("SOLD OUT:", sold_out)
             elif ticket_price is not None:
-                print("Ticket link:", ticket_price.a['href'])
-
-        
-
-headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'
-}
-r = requests.get(url, headers=headers)
-with open('pages/930.html', 'wb') as of:
-    of.write(r.content)
-
-soup = BeautifulSoup(r.content, 'html.parser')
-
+                ticket_link = ticket_price.a['href']
+                print("Ticket link:", ticket_link)
+                show['link'] = ticket_link
+            self.shows.append(show)
