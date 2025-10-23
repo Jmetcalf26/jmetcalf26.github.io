@@ -1,9 +1,13 @@
 from bs4 import BeautifulSoup
 from Venue import Venue
 
+URL="https://www.930.com"
+NAME="930"
+COOLDOWN=10
+
 class NineThirty(Venue):
-    def __init__(self, url, name=""):
-        super().__init__(url, name)
+    def __init__(self):
+        super().__init__(url=URL, name=NAME, cooldown=COOLDOWN)
 
     def parse(self, soup):
         # Only taking the first index on skips the "Up Next" item

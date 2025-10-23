@@ -1,9 +1,12 @@
 from bs4 import BeautifulSoup
 from Venue import Venue
 
+URL = "https://www.theatlantis.com"
+NAME = "atlantis"
+
 class Atlantis(Venue):
-    def __init__(self, url, name=""):
-        super().__init__(url, name)
+    def __init__(self):
+        super().__init__(url=URL, name=NAME)
 
     def parse(self, soup):
         upcoming_shows = soup.select(".event-list-item")
@@ -12,11 +15,12 @@ class Atlantis(Venue):
 
     def parse_show(self, show):
         show_dict = {}
-        # TODO: Update this parsing to see if every single show has the same
-        # 3-span structure and the middle one is just a dot that can be skipped
-        dates = show.find('p', class_="item-date")
+        dates = show.find('p', class_="item-date").find_all('span')
         if dates is not None:
-            show_dict['dayOfWeek'] = dates.text.strip()
+            show_dict['dayOfWeek'] = dates[0].text.strip()
+            dayMonthYear = dates[2].text.strip().split()
+            show_dict['day'] = dayMonthYear[1][:-1]
+            show_dict['month'] = dayMonthYear[0]
         
         doors = show.find('p', class_="item-time")
         if doors is not None:
@@ -32,12 +36,14 @@ class Atlantis(Venue):
             opener = supports.text.strip()
             show_dict['opener'] = opener
 
-        # TODO: Update this section to use different 'div' in order to differentiate
-        # between still in stock vs sold out
-        ticket_price = show.find("section", class_="ticket-price")
+        ticket_price = show.find("a", class_="event-button-link")
         if ticket_price is not None:
-            ticket_link = ticket_price.a['href']
+            ticket_link = ticket_price['href']
             show_dict['link'] = ticket_link
+
+        sold_out = show.find("div", class_="event-button--sold-out")
+        if sold_out is not None:
+            del show_dict['link']
 
         return show_dict
 
@@ -45,7 +51,6 @@ class Atlantis(Venue):
         for show in self.shows:
             self.print_show(show)
 
-    # TODO: Determine if there are any differences here
     def print_show(self, show):
         date = ""
         try:

@@ -1,13 +1,21 @@
 import requests
+import time
 from bs4 import BeautifulSoup
+from Venue import Venue
 from NineThirty import NineThirty
+from Atlantis import Atlantis
 
 # TODO: Add Atlantis parsing once it is ready
-def scrape():
-    nt = NineThirty(url='https://www.930.com', name="930")
-    nt_soup = nt.getHTML()
-    nt.parse(nt_soup)
-    nt.print()
+def scrape(venues):
+    for venue in venues:
+        v = venue()
+        v_soup = v.getHTML()
+        v.parse(v_soup)
+        v.print()
+        time.sleep(10)
 
 if __name__=="__main__":
-    scrape()
+    # TODO Add argument parsing to enable certain venues
+    #  Ex. python3 scrape.py --930 --Atlantis
+    venues = [NineThirty, Atlantis]
+    scrape(venues)
