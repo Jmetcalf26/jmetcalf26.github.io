@@ -1,33 +1,30 @@
 from bs4 import BeautifulSoup
 from Venue import Venue
 
-class NineThirty(Venue):
+class Atlantis(Venue):
     def __init__(self, url, name=""):
         super().__init__(url, name)
 
     def parse(self, soup):
-        # Only taking the first index on skips the "Up Next" item
-        # That is formatted differently and is repeated.
-        upcoming_shows = soup.select(".list-view-item")[1:]
+        upcoming_shows = soup.select(".event-list-item")
         for show in upcoming_shows:
             self.shows.append(self.parse_show(show))
 
     def parse_show(self, show):
         show_dict = {}
-        dates = show.find('span', class_="dates")
+        # TODO: Update this parsing to see if every single show has the same
+        # 3-span structure and the middle one is just a dot that can be skipped
+        dates = show.find('p', class_="item-date")
         if dates is not None:
-            date = dates.text.strip().split()
-            show_dict['dayOfWeek'] = date[0]
-            show_dict['day'] = date[1]
-            show_dict['month'] = date[2]
+            show_dict['dayOfWeek'] = dates.text.strip()
         
-        doors = show.find('span', class_="doors")
+        doors = show.find('p', class_="item-time")
         if doors is not None:
             doors = doors.text.strip()
             show_dict['doors'] = doors
 
-        artist_info = show.find(class_="headliners")
-        supports = show.find(class_="supports")
+        artist_info = show.find('h3', class_="item-title")
+        supports = show.find('h4', class_="item-supporting")
         if artist_info is not None:
             ai = artist_info.text.strip()
             show_dict['artist'] = ai
@@ -35,6 +32,8 @@ class NineThirty(Venue):
             opener = supports.text.strip()
             show_dict['opener'] = opener
 
+        # TODO: Update this section to use different 'div' in order to differentiate
+        # between still in stock vs sold out
         ticket_price = show.find("section", class_="ticket-price")
         if ticket_price is not None:
             ticket_link = ticket_price.a['href']
@@ -46,6 +45,7 @@ class NineThirty(Venue):
         for show in self.shows:
             self.print_show(show)
 
+    # TODO: Determine if there are any differences here
     def print_show(self, show):
         date = ""
         try:

@@ -19,3 +19,6 @@ class Venue:
         
     def parse(self, soup):
         pass
+    
+    def print(self):
+        pass
