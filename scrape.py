@@ -4,8 +4,8 @@ from bs4 import BeautifulSoup
 from Venue import Venue
 from NineThirty import NineThirty
 from Atlantis import Atlantis
+from PearlStreet import PearlStreet
 
-# TODO: Add Atlantis parsing once it is ready
 def scrape(venues):
     for venue in venues:
         v = venue()
@@ -17,5 +17,5 @@ def scrape(venues):
 if __name__=="__main__":
     # TODO Add argument parsing to enable certain venues
     #  Ex. python3 scrape.py --930 --Atlantis
-    venues = [NineThirty, Atlantis]
+    venues = [PearlStreet]
     scrape(venues)
