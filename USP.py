@@ -1,22 +1,20 @@
 from bs4 import BeautifulSoup
-#from Venue import Venue
-from USP import USP
+from Venue import Venue
 
-URL_EXT="the-howard/"
-NAME="TheHoward"
+URL="https://www.unionstagepresents.com/"
+NAME="USP"
+COOLDOWN=10
 
-class TheHoward(USP):
-    def __init__(self):
-        super().__init__(usp_ext=URL_EXT, usp_name=NAME)
+class USP(Venue):
+    def __init__(self, usp_ext="", usp_name=NAME):
+        super().__init__(url=URL+usp_ext, name=usp_name, cooldown=COOLDOWN, isUSP=True)
 
-    '''
     def parse(self, soup):
         # Overarching shows HTML: row row-cols-1 row-cols-md-2 row-cols-lg-3 row-cols-xl-3 g-4 tessera-card-deck
         # Individual shows: <div class="col">
         upcoming_shows = soup.select(".col")
         for show in upcoming_shows:
             if "text-center" not in show["class"]:
-                print(show)
                 s = self.parse_show(show)
                 if "Private Event" not in s['artist']:
                     self.shows.append(s)
@@ -43,16 +41,15 @@ class TheHoward(USP):
             opener = supports.text.strip()
             show_dict['opener'] = opener
 
-        sold_out = show.find(class_="sold-out")
-        if sold_out is not None:
-            print(sold_out.text.strip())
-        ticket_price = show.find(class_="buy-now")
-        if ticket_price is not None:
-            if ticket_price.find("a") is not None:
-                ticket_link = ticket_price.a['href']
-                show_dict['link'] = ticket_link
-            else:
-                show_dict['link'] = "N/A"
+        sold_out = show.find("text", id="sold-out")
+        if sold_out is None:
+            ticket_price = show.find(class_="buy-now")
+            if ticket_price is not None:
+                if ticket_price.find("a") is not None:
+                    ticket_link = ticket_price.a['href']
+                    show_dict['link'] = ticket_link
+                else:
+                    show_dict['link'] = "N/A"
 
         return show_dict
 
@@ -93,4 +90,3 @@ class TheHoward(USP):
             print("Ticket link:", show['link'])
         except KeyError:
             print("SOLD OUT")
-    '''

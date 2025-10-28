@@ -6,7 +6,7 @@ from bs4 import BeautifulSoup
 
 
 class Venue:
-    def __init__(self, url, name="", cooldown=10):
+    def __init__(self, url, name="", cooldown=10, isUSP=False):
         self.url = url
         self.name = name
         self.cooldown = cooldown
@@ -15,15 +15,19 @@ class Venue:
         }
         self.shows = []
 
+        self.cd_path = ""
+        if isUSP:
+            self.cd_path = "./cooldowns/USP_cooldown"
+        else:
+            self.cd_path = "./cooldowns/" + self.name + "_cooldown"
+
     def getHTML(self):
         
-        cd_path = "./cooldowns/" + self.name + "_cooldown"
-        
-        if not os.path.exists(cd_path):
-            with open(cd_path, 'w') as cd:
+        if not os.path.exists(self.cd_path):
+            with open(self.cd_path, 'w') as cd:
                 cd.write(str(floor(time.time())))
         
-        with open(cd_path, "r") as cd:
+        with open(self.cd_path, "r") as cd:
             prev_scrape = int(cd.read())
             diff = time.time() - prev_scrape
             print("Time since last scrape:", diff)
@@ -31,7 +35,7 @@ class Venue:
                 time.sleep(diff)
         
         r = requests.get(self.url, headers=self.headers)
-        with open(cd_path, "w") as cd:
+        with open(self.cd_path, "w") as cd:
             cd.write(str(floor(time.time())))
 
         with open('pages/'+self.name+'.html', 'wb') as of:
