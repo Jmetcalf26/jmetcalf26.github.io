@@ -28,7 +28,9 @@ class NineThirty(Venue):
         doors = show.find('span', class_="doors")
         if doors is not None:
             doors = doors.text.strip()
-            show_dict['doors'] = doors
+            if doors != "":
+                ds = doors.split()
+                show_dict['doors'] = ds[1] + ds[2]
 
         artist_info = show.find(class_="headliners")
         supports = show.find(class_="supports")

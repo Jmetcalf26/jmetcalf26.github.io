@@ -1,36 +1,38 @@
 from bs4 import BeautifulSoup
 from Venue import Venue
 
-URL = "https://www.theatlantis.com"
-NAME = "atlantis"
+URL="https://www.unionstagepresents.com/the-howard/"
+NAME="TheHoward"
+COOLDOWN=10
 
-class Atlantis(Venue):
+class TheHoward(Venue):
     def __init__(self):
-        super().__init__(url=URL, name=NAME)
+        super().__init__(url=URL, name=NAME, cooldown=COOLDOWN)
 
     def parse(self, soup):
-        upcoming_shows = soup.select(".event-list-item")
+        # Overarching shows HTML: row row-cols-1 row-cols-md-2 row-cols-lg-3 row-cols-xl-3 g-4 tessera-card-deck
+        # Individual shows: <div class="col">
+        upcoming_shows = soup.select(".col")
         for show in upcoming_shows:
-            self.shows.append(self.parse_show(show))
+            s = self.parse_show(show)
+            if len(s) > 0 and "Private Event" not in s['artist']:
+                self.shows.append(s)
 
     def parse_show(self, show):
         show_dict = {}
-        dates = show.find('p', class_="item-date").find_all('span')
+        dates = show.find(class_="date")
         if dates is not None:
-            show_dict['dayOfWeek'] = dates[0].text.strip()
-            dayMonthYear = dates[2].text.strip().split()
-            show_dict['day'] = dayMonthYear[1][:-1]
-            show_dict['month'] = dayMonthYear[0]
+            date = dates.text.strip().split()
+            show_dict['day'] = date[1]
+            show_dict['month'] = date[0]
         
-        doors = show.find('p', class_="item-time")
+        doors = show.find(class_="tessera-showTimes")
         if doors is not None:
             doors = doors.text.strip()
-            if doors != "":
-                ds = doors.split()
-                show_dict['doors'] = ds[1] + ds[2]
+            show_dict['doors'] = doors.split()[1]
 
-        artist_info = show.find('h3', class_="item-title")
-        supports = show.find('h4', class_="item-supporting")
+        artist_info = show.find(class_="card-title")
+        supports = show.find(class_="tessera-additionalArtists")
         if artist_info is not None:
             ai = artist_info.text.strip()
             show_dict['artist'] = ai
@@ -38,14 +40,13 @@ class Atlantis(Venue):
             opener = supports.text.strip()
             show_dict['opener'] = opener
 
-        ticket_price = show.find("a", class_="event-button-link")
-        if ticket_price is not None:
-            ticket_link = ticket_price['href']
-            show_dict['link'] = ticket_link
-
-        sold_out = show.find("div", class_="event-button--sold-out")
+        sold_out = show.find(class_="sold-out")
         if sold_out is not None:
-            del show_dict['link']
+            print(sold_out.text.strip())
+        ticket_price = show.find(class_="buy-now")
+        if ticket_price is not None:
+            ticket_link = ticket_price.a['href']
+            show_dict['link'] = ticket_link
 
         return show_dict
 

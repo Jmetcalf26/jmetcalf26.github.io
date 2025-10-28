@@ -29,7 +29,7 @@ class PearlStreet(Venue):
         doors = show.find(class_="tessera-showTimes")
         if doors is not None:
             doors = doors.text.strip()
-            show_dict['doors'] = doors
+            show_dict['doors'] = doors.split()[1]
 
         artist_info = show.find(class_="card-title")
         supports = show.find(class_="tessera-additionalArtists")
@@ -40,6 +40,8 @@ class PearlStreet(Venue):
             opener = supports.text.strip()
             show_dict['opener'] = opener
 
+        sold_out = show.find(class_="sold-out")
+        print(sold_out.text.strip())
         ticket_price = show.find(class_="buy-now")
         if ticket_price is not None:
             ticket_link = ticket_price.a['href']
