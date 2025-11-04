@@ -10,39 +10,65 @@ class DC9(Venue):
 
     def parse(self, soup):
         for show in soup:
-            print(show)
             self.shows.append(self.parse_show(show))
 
     def parse_show(self, show):
         show_dict = {}
-        dates = show.find(class_="listingDateTime.listing-date-time.listingMeta.meta")
-        if dates.span is not None:
-            date = dates.span.text.strip().split()
+        dates = show['dateTime']
+        if dates is not None:
+            date = dates.strip().split()
             show_dict['dayOfWeek'] = date[0]
             show_dict['day'] = date[2]
             show_dict['month'] = date[1]
         
-        doors = show.find(class_="listing-doors.listingMeta.meta")
+        doors = show['doors']
         if doors is not None:
-            doors = doors.text.strip()
+            doors = doors.strip()
             if doors != "":
                 ds = doors.split()
                 show_dict['doors'] = ds[1]
 
-        artist_info = show.find(class_="listing__description")
-        print(artist_info)
-        #supports = show.find(class_="supports")
-        if artist_info is not None:
-            ai = artist_info.text.strip()
-            show_dict['artist'] = ai
-        #if supports is not None:
-            #opener = supports.text.strip()
-            #show_dict['opener'] = opener
+        artist_info = ""
+        supports = []
+        if 'lineup' in show:
+            lineup = show['lineup']
+            if 'headliners' in lineup:
+                headliners = lineup['headliners']
+                if 'title' in headliners[0]:
+                    artist_info = headliners[0]['title']
+                else:
+                    artist_info = headliners[0]['post_title']
+            if 'standard' in lineup:
+                standard = lineup['standard']
+                if artist_info == "":
+                    if 'title' in standard[0]:
+                        artist_info = standard[0]['title']
+                    else:
+                        artist_info = standard[0]['post_title']
+                if len(standard) > 1:
+                    for act in standard[1:]:
+                        if 'title' in act:
+                            supports.append(act['title'])
+                        else:
+                            supports.append(act['post_title'])
+        else:
+            artist_info = show['title']
 
-        ticket_price = show.find(class_="listing__titleLink")
-        if ticket_price is not None:
-            ticket_link = ticket_price['href']
-            show_dict['link'] = ticket_link
+
+
+        print(artist_info)
+        print(supports)
+
+        if artist_info is not None:
+            show_dict['artist'] = artist_info
+        if supports is not None:
+            opener = supports
+            show_dict['opener'] = opener
+
+        if 'permalink' in show:
+            show_dict['link'] = show['permalink']
+        else:
+            show_dict['link'] = "N/A"
 
         return show_dict
 
