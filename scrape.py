@@ -17,7 +17,7 @@ from DC9 import DC9
 def scrape(venues):
     for venue in venues:
         v = venue()
-        v_soup = v.getHTML()
+        v_soup = v.getData()
         v.parse(v_soup)
         v.print()
 

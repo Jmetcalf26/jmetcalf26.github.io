@@ -1,17 +1,15 @@
-from bs4 import BeautifulSoup
 from Venue import Venue
 
-URL="https://www.dc9.club/events/"
+URL="https://dc9.club/api/plot/v1/listings?currentpage=1&notLoaded=false&listingsPerPage=100&_locale=user"
 NAME="DC9"
 COOLDOWN=10
 
 class DC9(Venue):
     def __init__(self):
-        super().__init__(url=URL, name=NAME, cooldown=COOLDOWN)
+        super().__init__(url=URL, name=NAME, cooldown=COOLDOWN, isAPI=True)
 
     def parse(self, soup):
-        upcoming_shows = soup.select(".listings-block-list__listing")
-        for show in upcoming_shows:
+        for show in soup:
             print(show)
             self.shows.append(self.parse_show(show))
 

@@ -1,15 +1,17 @@
 import requests
 import time
 import os
+import json
 from math import floor
 from bs4 import BeautifulSoup
 
 
 class Venue:
-    def __init__(self, url, name="", cooldown=10, isUSP=False):
+    def __init__(self, url, name="", cooldown=10, isUSP=False, isAPI=False):
         self.url = url
         self.name = name
         self.cooldown = cooldown
+        self.isAPI=isAPI
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36'
         }
@@ -21,8 +23,18 @@ class Venue:
         else:
             self.cd_path = "./cooldowns/" + self.name + "_cooldown"
 
-    def getHTML(self):
+
+
+
+    def backupData(self, r):
+        with open('pages/'+self.name+'.html', 'wb') as of:
+            of.write(r.content)
         
+    def updateCooldown(self):
+        with open(self.cd_path, "w") as cd:
+            cd.write(str(floor(time.time())))
+
+    def waitCooldown(self):
         if not os.path.exists(self.cd_path):
             with open(self.cd_path, 'w') as cd:
                 cd.write(str(floor(time.time())))
@@ -32,17 +44,20 @@ class Venue:
             diff = time.time() - prev_scrape
             print("Time since last scrape:", diff)
             if diff < self.cooldown:
+                print("ABOUT TO SLEEP:", diff)
                 time.sleep(diff)
-        
+
+    def getData(self):
+        self.waitCooldown()
         r = requests.get(self.url, headers=self.headers)
-        with open(self.cd_path, "w") as cd:
-            cd.write(str(floor(time.time())))
+        self.updateCooldown()
+        self.backupData(r)
 
-        with open('pages/'+self.name+'.html', 'wb') as of:
-            of.write(r.content)
+        if self.isAPI:
+            return json.loads(r.content)
+        else:
+            return BeautifulSoup(r.content, 'html.parser')
 
-        return BeautifulSoup(r.content, 'html.parser')
-        
     def parse(self, soup):
         pass
     
