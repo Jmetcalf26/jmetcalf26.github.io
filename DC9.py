@@ -14,19 +14,22 @@ class DC9(Venue):
 
     def parse_show(self, show):
         show_dict = {}
-        dates = show['dateTime']
-        if dates is not None:
-            date = dates.strip().split()
-            show_dict['dayOfWeek'] = date[0]
-            show_dict['day'] = date[2]
-            show_dict['month'] = date[1]
+        if 'dateTime' in show:
+            dates = show['dateTime']
+            if dates != "":
+                dates = dates[dates.index("<span>")+len("<span>"):dates.index("</span>", 2)]
+                date = dates.split()
+                show_dict['dayOfWeek'] = date[0]
+                show_dict['day'] = date[2]
+                show_dict['month'] = date[1]
         
-        doors = show['doors']
-        if doors is not None:
-            doors = doors.strip()
-            if doors != "":
-                ds = doors.split()
-                show_dict['doors'] = ds[1]
+        if 'doors' in show:
+            doors = show['doors']
+            if doors is not None:
+                doors = doors.strip()
+                if doors != "":
+                    ds = doors.split()
+                    show_dict['doors'] = ds[1]
 
         artist_info = ""
         supports = []
@@ -56,14 +59,16 @@ class DC9(Venue):
 
 
 
-        print(artist_info)
-        print(supports)
 
         if artist_info is not None:
             show_dict['artist'] = artist_info
         if supports is not None:
             opener = supports
             show_dict['opener'] = opener
+
+        if 'description' in show:
+            if 'SOLD OUT' in show['description']:
+                return show_dict
 
         if 'permalink' in show:
             show_dict['link'] = show['permalink']

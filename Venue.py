@@ -44,8 +44,8 @@ class Venue:
             diff = time.time() - prev_scrape
             print("Time since last scrape:", diff)
             if diff < self.cooldown:
-                print("ABOUT TO SLEEP:", diff)
-                time.sleep(diff)
+                print("ABOUT TO SLEEP:", self.cooldown - diff)
+                time.sleep(self.cooldown - diff)
 
     def getData(self):
         self.waitCooldown()
