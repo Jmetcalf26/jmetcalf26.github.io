@@ -27,7 +27,7 @@ class Venue:
 
 
     def backupData(self, r):
-        with open('pages/'+self.name+'.html', 'wb') as of:
+        with open('pages/'+self.name, 'wb') as of:
             of.write(r.content)
         
     def updateCooldown(self):
