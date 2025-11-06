@@ -1,0 +1,10 @@
+HTTP/1.1 404 Not Found
+Content-Type: text/html; charset=utf-8
+Date: Thu, 06 Nov 2025 13:04:03 GMT
+Server: Kestrel
+Set-Cookie: SessionId=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/
+Set-Cookie: .AspNetCore.Mvc.CookieTempDataProvider=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; samesite=lax; httponly
+Transfer-Encoding: chunked
+Strict-Transport-Security: max-age=2592000
+Request-Context: appId=cid-v1:0e20aa6a-92d8-4d39-9516-acd86dbc235e
+

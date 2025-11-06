@@ -13,6 +13,7 @@ from CapitalTurnaround import CapitalTurnaround
 from NatsPark import NatsPark
 from PieShop import PieShop
 from DC9 import DC9
+from Songbyrd import Songbyrd
 
 def scrape(venues):
     for venue in venues:
@@ -24,5 +25,5 @@ def scrape(venues):
 if __name__=="__main__":
     # TODO Add argument parsing to enable certain venues
     #  Ex. python3 scrape.py --930 --Atlantis
-    venues = [DC9]
+    venues = [Songbyrd]
     scrape(venues)
