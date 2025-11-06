@@ -1,8 +1,6 @@
 from bs4 import BeautifulSoup
 from Venue import Venue
-from datetime import datetime
-import requests
-import json
+from datetime import date
 
 URL="https://api.dice.fm/venue_profiles/slug/songbyrd-r58r"
 NAME="Songbyrd"
@@ -24,26 +22,23 @@ class Songbyrd(Venue):
         show_dict = {}
         print(show)
         dates = show['dates']
-        d = None
         if dates is not None:
 
 
-            da = dates['event_start_date']
-            da = da[:da.rfind("-")]
-            d = datetime.fromisoformat(da)
-            
-            show_dict['dayOfWeek'] = d.strftime("%A")[:3]
-            show_dict['day'] = d.strftime("%d")
-            show_dict['month'] = d.strftime("%m")
+            date = dates.text.strip().split()
+            d = date.fromisoformat(date_string
+            d.strftime("%A")
+            show_dict['dayOfWeek'] = date[0]
+            show_dict['day'] = date[1]
+            show_dict['month'] = date[2]
         
-            show_dict['doors'] = d.strftime("%I%p")
+        doors = show.find('span', class_="doors")
+        if doors is not None:
+            doors = doors.text.strip()
+            if doors != "":
+                ds = doors.split()
+                show_dict['doors'] = ds[1] + ds[2]
 
-        id = show['id']
-
-        lineup_page = requests.get("https://api.dice.fm/events/" + id + "/lineup", headers=self.headers)
-        print(lineup_page.text)
-        if lineup_page.text is not None:
-            lineup_page = json.loads(lineup_page.text)
         artist_info = show.find(class_="headliners")
         supports = show.find(class_="supports")
         if artist_info is not None:
