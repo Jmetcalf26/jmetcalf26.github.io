@@ -41,22 +41,27 @@ class Songbyrd(Venue):
         id = show['id']
 
         lineup_page = requests.get("https://api.dice.fm/events/" + id + "/lineup", headers=self.headers)
-        print(lineup_page.text)
         if lineup_page.text is not None:
             lineup_page = json.loads(lineup_page.text)
-        artist_info = show.find(class_="headliners")
-        supports = show.find(class_="supports")
-        if artist_info is not None:
-            ai = artist_info.text.strip()
-            show_dict['artist'] = ai
-        if supports is not None:
-            opener = supports.text.strip()
-            show_dict['opener'] = opener
 
-        ticket_price = show.find("section", class_="ticket-price")
-        if ticket_price is not None:
-            ticket_link = ticket_price.a['href']
-            show_dict['link'] = ticket_link
+        artist_info = lineup_page['lineup'][-1]
+        print(artist_info)
+        supports = lineup_page['lineup'][:-1] if len(lineup_page['lineup']) > 1 else None
+        print(supports)
+        if 'title' in artist_info:
+            show_dict['artist'] = artist_info['title']
+        else:
+            show_dict['artist'] = artist_info['name']
+        for supporter in supports:
+            if 'title' in supporter:
+                show_dict['opener'] = supporter['title']
+            else:
+                show_dict['opener'] = supporter['name']
+
+        if 'status' in show and show['status'] != "sold-out":
+            if 'price' in show:
+                ticket_link = show['price']
+                show_dict['link'] = ticket_link['amount']
 
         return show_dict
 
