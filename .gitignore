@@ -1,0 +1,5 @@
+__pycache__/*.pyc
+cooldowns/*cooldown
+pages/Songbyrd
+.venv/
+node_modules/

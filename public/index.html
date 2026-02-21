@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DC Shows</title>
+  <style>
+    /* -----------------------------------------------------------------------
+       CSS custom properties — change these to re-theme the whole page.
+    ----------------------------------------------------------------------- */
+    :root {
+      --bg:            #0d0d0d;   /* page background               */
+      --surface:       #181818;   /* card / button resting bg      */
+      --surface-hover: #212121;   /* card / button hover bg        */
+      --border:        #272727;   /* grid lines, button borders    */
+      --text:          #e4e4e4;   /* primary text                  */
+      --text-muted:    #666;      /* secondary / meta text         */
+      --accent:        #c9a84c;   /* active state & ticket links   */
+      --sold-out:      #6e3333;   /* sold-out label colour         */
+      --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      --radius: 2px;
+    }
+
+    /* -----------------------------------------------------------------------
+       Reset
+    ----------------------------------------------------------------------- */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    /* -----------------------------------------------------------------------
+       Base
+    ----------------------------------------------------------------------- */
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 14px;
+      line-height: 1.5;
+      min-height: 100vh;
+      padding: 2.5rem 1.5rem 4rem;
+    }
+
+    /* -----------------------------------------------------------------------
+       Header
+    ----------------------------------------------------------------------- */
+    header {
+      margin-bottom: 2rem;
+    }
+
+    h1 {
+      font-size: 0.7rem;
+      font-weight: 500;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    /* -----------------------------------------------------------------------
+       Venue selector — scrollable row of pill buttons
+    ----------------------------------------------------------------------- */
+    .venue-selector {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 1.25rem;
+    }
+
+    .venue-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-muted);
+      cursor: pointer;
+      font-family: var(--font);
+      font-size: 0.75rem;
+      letter-spacing: 0.04em;
+      padding: 4px 12px;
+      transition: background 0.12s, color 0.12s, border-color 0.12s;
+    }
+
+    .venue-btn:hover {
+      background: var(--surface-hover);
+      border-color: #404040;
+      color: var(--text);
+    }
+
+    /* Active venue is highlighted with the accent colour */
+    .venue-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #000;
+      font-weight: 600;
+    }
+
+    /* -----------------------------------------------------------------------
+       Status line — "Loading…", "Showing cached results.", etc.
+    ----------------------------------------------------------------------- */
+    .status {
+      color: var(--text-muted);
+      font-size: 0.7rem;
+      letter-spacing: 0.04em;
+      min-height: 1.2em;          /* keep layout stable when empty */
+      margin-bottom: 1.25rem;
+    }
+
+    /* -----------------------------------------------------------------------
+       Shows grid — 1-px hairline grid using parent bg as the line colour
+    ----------------------------------------------------------------------- */
+    #showsGrid {
+      display: grid;
+      /* Each column is at least 240px; fills remaining space automatically */
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 1px;
+      background: var(--border);  /* the 1-px gaps reveal this as grid lines */
+    }
+
+    /* -----------------------------------------------------------------------
+       Show card
+    ----------------------------------------------------------------------- */
+    .show-card {
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 1.1rem 1.25rem;
+      transition: background 0.1s;
+    }
+
+    .show-card:hover {
+      background: var(--surface-hover);
+    }
+
+    /* Artist name — most prominent element on the card */
+    .show-artist {
+      color: var(--text);
+      font-size: 0.95rem;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+
+    /* Date line: "Fri 21 Feb" */
+    .show-date {
+      color: var(--text-muted);
+      font-size: 0.72rem;
+      letter-spacing: 0.04em;
+    }
+
+    /* Doors line: "Doors 8PM" */
+    .show-doors {
+      color: var(--text-muted);
+      font-size: 0.72rem;
+    }
+
+    /* Opener line: "w/ Opening Act" */
+    .show-opener {
+      color: var(--text-muted);
+      font-size: 0.72rem;
+      font-style: italic;
+    }
+
+    /* Spacer between metadata and the ticket CTA */
+    .show-footer {
+      margin-top: 8px;
+    }
+
+    /* Ticket link — styled as a small uppercase label */
+    .ticket-link {
+      color: var(--accent);
+      font-size: 0.68rem;
+      letter-spacing: 0.08em;
+      text-decoration: none;
+      text-transform: uppercase;
+    }
+
+    .ticket-link:hover {
+      text-decoration: underline;
+    }
+
+    /* Price label (Songbyrd returns a dollar amount instead of a URL) */
+    .ticket-price {
+      color: var(--text-muted);
+      font-size: 0.68rem;
+      letter-spacing: 0.05em;
+    }
+
+    /* Sold-out label */
+    .sold-out {
+      color: var(--sold-out);
+      font-size: 0.68rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    /* -----------------------------------------------------------------------
+       Loading skeleton — shimmer animation while scraper runs
+    ----------------------------------------------------------------------- */
+
+    /* Skeleton card shares the same padding as a real card */
+    .skeleton-card {
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 1.1rem 1.25rem;
+    }
+
+    /* Generic shimmer bar */
+    .skeleton-line {
+      background: linear-gradient(
+        90deg,
+        var(--surface) 25%,
+        var(--surface-hover) 50%,
+        var(--surface) 75%
+      );
+      background-size: 200% 100%;
+      animation: shimmer 1.4s infinite;
+      border-radius: var(--radius);
+      height: 12px;
+    }
+
+    /* Width variants for variety */
+    .skeleton-line         { width: 75%; }
+    .skeleton-line.short   { width: 40%; }
+    .skeleton-line.long    { width: 90%; }
+    .skeleton-line.xshort  { width: 25%; }
+
+    @keyframes shimmer {
+      0%   { background-position:  200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* -----------------------------------------------------------------------
+       Empty / error states
+    ----------------------------------------------------------------------- */
+    .empty-msg,
+    .error-msg {
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      grid-column: 1 / -1;   /* span all columns */
+      padding: 3rem 1.5rem;
+      text-align: center;
+    }
+
+    .error-msg {
+      color: #884444;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>DC Shows</h1>
+  </header>
+
+  <!-- Venue selector pills — populated by buildVenueSelector() -->
+  <nav class="venue-selector" id="venueSelector" aria-label="Venue selector"></nav>
+
+  <!-- Status line shown below selector: "Loading…", "Showing cached results.", etc. -->
+  <div class="status" id="status" aria-live="polite"></div>
+
+  <!-- Show cards grid — populated by renderShows() or renderSkeleton() -->
+  <main id="showsGrid" aria-live="polite"></main>
+
+  <script>
+    // =========================================================================
+    // Configuration
+    // =========================================================================
+
+    /**
+     * Human-readable display names for each venue class name.
+     * Used by buildVenueSelector() and nowhere else.
+     * Add an entry here when you add a new venue to the Python side.
+     */
+    const VENUE_DISPLAY = {
+      NineThirty:       '9:30 Club',
+      Atlantis:         'The Atlantis',
+      DC9:              'DC9',
+      Songbyrd:         'Songbyrd',
+      PieShop:          'Pie Shop',
+      UnionStage:       'Union Stage',
+      JamminJava:       'Jammin Java',
+      CapitalTurnaround:'Capital Turnaround',
+      TheHoward:        'The Howard',
+      MiracleTheatre:   'Miracle Theatre',
+      NatsPark:         'Nats Park',
+      PearlStreet:      'Pearl Street',
+    };
+
+    /**
+     * Numeric month index (1-based) → 3-letter abbreviation.
+     * Used by formatDate() to convert Songbyrd's numeric month strings.
+     */
+    const MONTHS = [
+      'Jan','Feb','Mar','Apr','May','Jun',
+      'Jul','Aug','Sep','Oct','Nov','Dec',
+    ];
+
+    // =========================================================================
+    // State
+    // =========================================================================
+
+    /** Currently selected venue class name, or null on first load. */
+    let activeVenue = null;
+
+    // =========================================================================
+    // DOM references
+    // =========================================================================
+
+    const venueSelector = document.getElementById('venueSelector');
+    const showsGrid     = document.getElementById('showsGrid');
+    const statusEl      = document.getElementById('status');
+
+    // =========================================================================
+    // Initialisation
+    // =========================================================================
+
+    /**
+     * Entry point — fetch the venue list from the server and build the UI.
+     * Auto-selects the first venue so the page isn't blank on arrival.
+     */
+    async function init() {
+      try {
+        const res    = await fetch('/api/venues');
+        const venues = await res.json();
+        buildVenueSelector(venues);
+
+        if (venues.length > 0) {
+          selectVenue(venues[0]);
+        }
+      } catch (e) {
+        setStatus('Could not reach the server.');
+      }
+    }
+
+    // =========================================================================
+    // Venue selector
+    // =========================================================================
+
+    /**
+     * Build one <button> per venue and append them to #venueSelector.
+     * @param {string[]} venues  Array of venue class name strings from /api/venues.
+     */
+    function buildVenueSelector(venues) {
+      venueSelector.innerHTML = '';
+      for (const venue of venues) {
+        const btn = document.createElement('button');
+        btn.className        = 'venue-btn';
+        btn.textContent      = VENUE_DISPLAY[venue] ?? venue;
+        btn.dataset.venue    = venue;
+        btn.addEventListener('click', () => selectVenue(venue));
+        venueSelector.appendChild(btn);
+      }
+    }
+
+    /**
+     * Activate a venue button and kick off a data load.
+     * No-op if the venue is already active.
+     * @param {string} venue  Venue class name.
+     */
+    function selectVenue(venue) {
+      if (activeVenue === venue) return;
+      activeVenue = venue;
+
+      // Flip the active class on the buttons.
+      for (const btn of venueSelector.querySelectorAll('.venue-btn')) {
+        btn.classList.toggle('active', btn.dataset.venue === venue);
+      }
+
+      loadShows(venue);
+    }
+
+    // =========================================================================
+    // Data loading
+    // =========================================================================
+
+    /**
+     * Fetch shows for a single venue from /api/scrape.
+     * Shows a skeleton grid while waiting and displays results (or errors) on completion.
+     * @param {string} venue  Venue class name.
+     */
+    async function loadShows(venue) {
+      setStatus('Loading\u2026');
+      renderSkeleton();
+
+      try {
+        const res = await fetch(`/api/scrape?venue=${encodeURIComponent(venue)}`);
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          setStatus(`Error: ${err.error ?? res.statusText}`);
+          showsGrid.innerHTML = '';
+          return;
+        }
+
+        const { shows, cached } = await res.json();
+
+        // Show a subtle note when we returned a cached result
+        setStatus(cached ? 'Showing cached results.' : '');
+        renderShows(shows);
+
+      } catch (e) {
+        setStatus('Failed to load shows.');
+        showsGrid.innerHTML = '<div class="error-msg">Could not connect to the server.</div>';
+      }
+    }
+
+    // =========================================================================
+    // Rendering
+    // =========================================================================
+
+    /**
+     * Fill #showsGrid with placeholder skeleton cards while data loads.
+     * Uses 6 cards to give a representative feel of the real layout.
+     */
+    function renderSkeleton() {
+      const cards = Array.from({ length: 6 }, () => `
+        <div class="skeleton-card" aria-hidden="true">
+          <div class="skeleton-line long"></div>
+          <div class="skeleton-line short"></div>
+          <div class="skeleton-line xshort"></div>
+        </div>
+      `).join('');
+      showsGrid.innerHTML = cards;
+    }
+
+    /**
+     * Render an array of show objects into #showsGrid.
+     * @param {Object[]} shows  Array of show dicts returned by the scraper.
+     */
+    function renderShows(shows) {
+      if (!shows || shows.length === 0) {
+        showsGrid.innerHTML = '<div class="empty-msg">No upcoming shows found.</div>';
+        return;
+      }
+      showsGrid.innerHTML = shows.map(renderCard).join('');
+    }
+
+    /**
+     * Build a single show card's HTML string.
+     *
+     * Handles edge cases across venues:
+     *  - DC9: opener is a string[] rather than a string
+     *  - Songbyrd: link is a dollar amount (number), not a URL
+     *  - USP: month is a text abbreviation, not a number
+     *
+     * @param  {Object} show  Show dict from the scraper.
+     * @returns {string}       HTML for one <article> card.
+     */
+    function renderCard(show) {
+      const dateStr   = formatDate(show);
+      const openerStr = formatOpener(show.opener);
+      const ticketHtml = renderTicket(show.link);
+
+      return `
+        <article class="show-card">
+          <div class="show-artist">${escHtml(show.artist ?? 'TBA')}</div>
+          ${dateStr   ? `<div class="show-date">${escHtml(dateStr)}</div>` : ''}
+          ${show.doors ? `<div class="show-doors">Doors ${escHtml(show.doors)}</div>` : ''}
+          ${openerStr  ? `<div class="show-opener">w/ ${escHtml(openerStr)}</div>` : ''}
+          <div class="show-footer">${ticketHtml}</div>
+        </article>
+      `;
+    }
+
+    /**
+     * Build a human-readable date string from the show dict.
+     * Songbyrd stores months as zero-padded numbers ("02"); others use text ("Feb").
+     * @param  {Object} show
+     * @returns {string}  e.g. "Fri 21 Feb" or ""
+     */
+    function formatDate(show) {
+      const parts = [];
+      if (show.dayOfWeek) parts.push(show.dayOfWeek);
+      if (show.day)       parts.push(show.day);
+      if (show.month) {
+        const n = parseInt(show.month, 10);
+        // If month is numeric (1-12), convert to abbreviation; otherwise use as-is.
+        parts.push((!isNaN(n) && n >= 1 && n <= 12) ? MONTHS[n - 1] : show.month);
+      }
+      return parts.join(' ');
+    }
+
+    /**
+     * Normalise the opener field which varies by venue:
+     *  - string: most venues
+     *  - string[]: DC9
+     *  - undefined/null: no opener
+     * @param  {string|string[]|undefined} opener
+     * @returns {string}
+     */
+    function formatOpener(opener) {
+      if (!opener) return '';
+      if (Array.isArray(opener)) return opener.join(', ');
+      return String(opener);
+    }
+
+    /**
+     * Build the ticket section HTML for a card.
+     *
+     * The `link` field has three possible shapes:
+     *   URL string  → render as an anchor ("Tickets →")
+     *   number      → Songbyrd ticket price in dollars ("$20")
+     *   absent      → sold out
+     *
+     * "N/A" links (USP venues with no ticket URL yet) are suppressed.
+     *
+     * @param  {string|number|undefined} link
+     * @returns {string}  HTML snippet
+     */
+    function renderTicket(link) {
+      if (link == null) {
+        return '<span class="sold-out">Sold Out</span>';
+      }
+
+      // Numeric value = Songbyrd price amount
+      const asNum = Number(link);
+      if (!isNaN(asNum) && typeof link === 'number') {
+        return `<span class="ticket-price">$${asNum}</span>`;
+      }
+
+      const linkStr = String(link).trim();
+      if (!linkStr || linkStr.toLowerCase() === 'n/a') {
+        return ''; // No ticket info available yet
+      }
+
+      // Validate it looks like a URL before rendering as a link
+      if (linkStr.startsWith('http')) {
+        return `<a class="ticket-link" href="${escHtml(linkStr)}" target="_blank" rel="noopener noreferrer">Tickets →</a>`;
+      }
+
+      // Fallback: render as plain text
+      return `<span class="ticket-price">${escHtml(linkStr)}</span>`;
+    }
+
+    // =========================================================================
+    // Utilities
+    // =========================================================================
+
+    /**
+     * Escape HTML special characters to prevent XSS when interpolating
+     * scraped strings into innerHTML.
+     * @param  {string} str
+     * @returns {string}
+     */
+    function escHtml(str) {
+      return String(str)
+        .replace(/&/g,  '&amp;')
+        .replace(/</g,  '&lt;')
+        .replace(/>/g,  '&gt;')
+        .replace(/"/g,  '&quot;')
+        .replace(/'/g,  '&#39;');
+    }
+
+    /**
+     * Update the status line beneath the venue selector.
+     * @param {string} msg  Message to display (empty = clear).
+     */
+    function setStatus(msg) {
+      statusEl.textContent = msg;
+    }
+
+    // =========================================================================
+    // Boot
+    // =========================================================================
+
+    init();
+  </script>
+</body>
+</html>
