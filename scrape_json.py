@@ -37,6 +37,8 @@ from NineThirty import NineThirty
 from Atlantis import Atlantis
 from DC9 import DC9
 from Songbyrd import Songbyrd
+from BlackCat import BlackCat
+from ThePocket import ThePocket
 from PieShop import PieShop
 from UnionStage import UnionStage
 from JamminJava import JamminJava
@@ -53,6 +55,8 @@ VENUE_MAP = {
     'Atlantis':         Atlantis,
     'DC9':              DC9,
     'Songbyrd':         Songbyrd,
+    'BlackCat':         BlackCat,
+    'ThePocket':        ThePocket,
     'PieShop':          PieShop,
     'UnionStage':       UnionStage,
     'JamminJava':       JamminJava,

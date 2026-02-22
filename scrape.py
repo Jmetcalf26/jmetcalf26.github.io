@@ -25,5 +25,5 @@ def scrape(venues):
 if __name__=="__main__":
     # TODO Add argument parsing to enable certain venues
     #  Ex. python3 scrape.py --930 --Atlantis
-    venues = [NineThirty, Atlantis, TheHoward]
+    venues = [DC9]
     scrape(venues)

@@ -1,0 +1,28 @@
+services:
+  web:
+    build: .
+    ports: 
+      - 3000:3000
+    env_file:
+      - server_env.txt
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["node", "server.js"]
+  db: 
+    image: postgres
+    restart: always
+    env_file:
+      - db_env.txt
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]
+      interval: 1s
+      timeout: 5s
+      retries: 10
+    #ports:
+      #- "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/
+
+volumes:
+  pgdata:

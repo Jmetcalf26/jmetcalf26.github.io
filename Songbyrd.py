@@ -4,66 +4,75 @@ from datetime import datetime
 import requests
 import json
 
-URL="https://api.dice.fm/venue_profiles/slug/songbyrd-r58r"
+URL="https://songbyrddc.com/events/"
 NAME="Songbyrd"
 COOLDOWN=10
 
 class Songbyrd(Venue):
     def __init__(self):
-        super().__init__(url=URL, name=NAME, cooldown=COOLDOWN, isAPI=True)
+        super().__init__(url=URL, name=NAME, cooldown=COOLDOWN, isAPI=False)
 
     def parse(self, soup):
-        if 'sections' in soup:
-            if 'items' in soup['sections'][0]:
-                for show in soup['sections'][0]['items']:
-                    self.shows.append(self.parse_show(show))
-
-    def parse_show(self, show):
-        if show['type'] == "event":
-            show = show['event']
-        show_dict = {}
-        print(show)
-        dates = show['dates']
-        d = None
-        if dates is not None:
-
-
-            da = dates['event_start_date']
-            da = da[:da.rfind("-")]
-            d = datetime.fromisoformat(da)
+        # The events are contained in divs with classes like "wpem-event-box-col"
+        event_divs = soup.find_all('div', class_='wpem-event-box-col')
+        for event in event_divs:
+            show_dict = {}
             
-            show_dict['dayOfWeek'] = d.strftime("%A")[:3]
-            show_dict['day'] = d.strftime("%d")
-            show_dict['month'] = d.strftime("%m")
-        
-            show_dict['doors'] = d.strftime("%I%p")
-
-        id = show['id']
-
-        lineup_page = requests.get("https://api.dice.fm/events/" + id + "/lineup", headers=self.headers)
-        if lineup_page.text is not None:
-            lineup_page = json.loads(lineup_page.text)
-
-        artist_info = lineup_page['lineup'][-1]
-        print(artist_info)
-        supports = lineup_page['lineup'][:-1] if len(lineup_page['lineup']) > 1 else None
-        print(supports)
-        if 'title' in artist_info:
-            show_dict['artist'] = artist_info['title']
-        else:
-            show_dict['artist'] = artist_info['name']
-        for supporter in supports:
-            if 'title' in supporter:
-                show_dict['opener'] = supporter['title']
+            # Artist / Title
+            title_div = event.find('div', class_='wpem-event-title')
+            if title_div and title_div.h3:
+                show_dict['artist'] = title_div.h3.get_text(strip=True)
             else:
-                show_dict['opener'] = supporter['name']
+                # Fallback: try finding any heading or prominent text in the wrapper
+                continue
 
-        if 'status' in show and show['status'] != "sold-out":
-            if 'price' in show:
-                ticket_link = show['price']
-                show_dict['link'] = ticket_link['amount']
+            # Supporting Acts (Openers)
+            openers_div = event.find('div', class_='wpem-event-supporting-acts')
+            if openers_div and openers_div.p:
+                openers_text = openers_div.p.get_text(strip=True)
+                if ":" in openers_text:
+                    openers_text = openers_text.split(":", 1)[1].strip()
+                if openers_text:
+                    show_dict['opener'] = openers_text
 
-        return show_dict
+            # Date
+            date_div = event.find('div', class_='wpem-from-date')
+            if date_div:
+                dotw = date_div.find('div', class_='wpem-dotw')
+                day = date_div.find('div', class_='wpem-date')
+                month = date_div.find('div', class_='wpem-month')
+                
+                if dotw: show_dict['dayOfWeek'] = dotw.get_text(strip=True)
+                if day: show_dict['day'] = day.get_text(strip=True)
+                if month: show_dict['month'] = month.get_text(strip=True)
+
+            # Doors
+            door_div = event.find('div', class_='wpem-event-door-time')
+            if door_div and door_div.p:
+                door_text = door_div.p.get_text(strip=True)
+                if ":" in door_text:
+                    door_text = door_text.split(":", 1)[1].strip()
+                if door_text:
+                    show_dict['doors'] = door_text
+
+            # Ticket Link
+            action_links = event.find_all('a', class_='wpem-event-action-url')
+            link = None
+            for alink in action_links:
+                if 'href' in alink.attrs:
+                    href = alink['href']
+                    # Prioritize dice.fm links
+                    if 'dice.fm' in href:
+                        link = href
+                        break
+                    # If we don't have a link yet, take the first one (usually songbyrddc.com/event/...)
+                    if not link:
+                        link = href
+            
+            if link:
+                show_dict['link'] = link
+
+            self.shows.append(show_dict)
 
     def print(self):
         for show in self.shows:

@@ -1,45 +1,37 @@
 /**
- * server.js — DC Shows web server
- *
- * Serves the frontend (public/index.html) and exposes two API routes:
- *
- *   GET /api/venues          → list of available venue class names
- *   GET /api/scrape?venue=X  → scrape venue X and return its shows as JSON
- *
- * Scraping is delegated to scrape_json.py via a child process so that the
- * existing Python scrapers run unchanged. Results are cached in memory for
- * CACHE_TTL_MS to avoid hammering venue sites on every page interaction.
+ * server.js — DC Shows web server with PostgreSQL persistence
  */
 
 'use strict';
 
-const express  = require('express');
+const express = require('express');
 const { spawn } = require('child_process');
-const path     = require('path');
+const path = require('path');
+const { Pool } = require('pg');
 
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
 
 const PORT = process.env.PORT || 3000;
+const PYTHON = path.join(__dirname, '.venvs/CONCERT', 'bin', 'python3');
 
-// Path to the Python interpreter inside the project's virtual environment.
-// Using the venv interpreter ensures beautifulsoup4 / requests are available
-// without touching the system Python.  Adjust if your venv lives elsewhere.
-const PYTHON = path.join(__dirname, '.venv', 'bin', 'python3');
+// Database configuration from environment
+const pool = new Pool({
+  user: process.env.DB_USER,
+  host: process.env.DB_HOST,
+  database: process.env.DB_NAME,
+  password: process.env.DB_PASSWORD,
+  port: process.env.DB_PORT,
+});
 
-// How long to hold a scrape result in memory before expiring (ms).
-// Keep this >= the per-venue Python cooldown (currently 10 s) so we never
-// spawn overlapping scrapes for the same venue.
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-
-// All supported venue class names.  Must match keys in scrape_json.py VENUE_MAP.
-// The order here controls the order the buttons appear in the UI.
 const VENUE_NAMES = [
   'NineThirty',
   'Atlantis',
   'DC9',
   'Songbyrd',
+  'BlackCat',
+  'ThePocket',
   'PieShop',
   'UnionStage',
   'JamminJava',
@@ -50,22 +42,177 @@ const VENUE_NAMES = [
   'PearlStreet',
 ];
 
+// Interval for background scraping (e.g., every 6 hours)
+const SCRAPE_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
 // ---------------------------------------------------------------------------
-// In-memory cache
+// Database Initialization
 // ---------------------------------------------------------------------------
 
-/**
- * Cache entry shape:
- *   { data: Show[], timestamp: number }
- *
- * Keyed by venue name string.
- */
-const cache = {};
+async function initDb() {
+  const createTableQuery = `
+    CREATE TABLE IF NOT EXISTS shows (
+        id SERIAL PRIMARY KEY,
+        venue_name TEXT NOT NULL,
+        artist TEXT NOT NULL,
+        opener TEXT,
+        day_of_week VARCHAR(10),
+        day INTEGER,
+        month VARCHAR(10),
+        doors_time VARCHAR(20),
+        ticket_link TEXT,
+        is_sold_out BOOLEAN DEFAULT FALSE,
+        last_scraped_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        show_date DATE,
+        CONSTRAINT unique_show UNIQUE (venue_name, artist, day, month)
+    );
+    CREATE INDEX IF NOT EXISTS idx_venue_name ON shows(venue_name);
+    CREATE INDEX IF NOT EXISTS idx_artist ON shows(artist);
+    CREATE INDEX IF NOT EXISTS idx_show_date ON shows(show_date);
+  `;
+  try {
+    await pool.query(createTableQuery);
+    console.log('Database initialized successfully.');
+  } catch (err) {
+    console.error('Error initializing database:', err);
+  }
+}
 
-/** Return true if a cache entry exists and is still within TTL. */
-function isCacheValid(venue) {
-  const entry = cache[venue];
-  return entry && (Date.now() - entry.timestamp < CACHE_TTL_MS);
+// ---------------------------------------------------------------------------
+// Data Ingestion
+// ---------------------------------------------------------------------------
+
+async function saveShowsToDb(venueName, shows) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const show of shows) {
+      const isSoldOut = !show.link || show.link === 'N/A' || show.link === 'SOLD OUT';
+      const ticketLink = isSoldOut ? null : String(show.link);
+      
+      let opener = show.opener;
+      if (Array.isArray(opener)) {
+        opener = opener.join(', ');
+      }
+
+      // Calculate show_date
+      let showDate = null;
+      if (show.day && show.month) {
+        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        let monthIdx = monthNames.indexOf(show.month);
+        if (monthIdx === -1) {
+          // Try full name if abbreviated fails
+          const fullMonths = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+          monthIdx = fullMonths.indexOf(show.month);
+        }
+        
+        if (monthIdx !== -1) {
+          const now = new Date();
+          const currentYear = now.getFullYear();
+          const currentMonth = now.getMonth();
+          
+          let year = currentYear;
+          // If the show month is earlier than the current month, it's likely next year
+          if (monthIdx < currentMonth - 2) { 
+            year = currentYear + 1;
+          }
+          
+          showDate = new Date(year, monthIdx, parseInt(show.day));
+        }
+      }
+
+      const query = `
+        INSERT INTO shows (venue_name, artist, opener, day_of_week, day, month, doors_time, ticket_link, is_sold_out, last_scraped_at, show_date)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP, $10)
+        ON CONFLICT (venue_name, artist, day, month) 
+        DO UPDATE SET 
+            opener = EXCLUDED.opener,
+            day_of_week = EXCLUDED.day_of_week,
+            doors_time = EXCLUDED.doors_time,
+            ticket_link = EXCLUDED.ticket_link,
+            is_sold_out = EXCLUDED.is_sold_out,
+            last_scraped_at = CURRENT_TIMESTAMP,
+            show_date = EXCLUDED.show_date;
+      `;
+      const values = [
+        venueName,
+        show.artist,
+        opener || null,
+        show.dayOfWeek || null,
+        parseInt(show.day) || null,
+        show.month || null,
+        show.doors || null,
+        ticketLink,
+        isSoldOut,
+        showDate
+      ];
+      await client.query(query, values);
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error(`Error saving shows for ${venueName}:`, err);
+  } finally {
+    client.release();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Scraping Logic
+// ---------------------------------------------------------------------------
+
+function scrapeVenue(venue) {
+  return new Promise((resolve, reject) => {
+    console.log(`[scraping] ${venue}`);
+    const python = spawn(
+      PYTHON,
+      [path.join(__dirname, 'scrape_json.py'), '--venues', venue],
+      { cwd: __dirname }
+    );
+
+    let stdout = '';
+    let stderr = '';
+
+    python.stdout.on('data', chunk => { stdout += chunk.toString(); });
+    python.stderr.on('data', chunk => { stderr += chunk.toString(); });
+
+    python.on('close', async (code) => {
+      if (stderr.trim()) {
+        console.error(`[${venue} stderr]\n${stderr.trim()}`);
+      }
+
+      if (code !== 0) {
+        return reject(new Error(`Scraper exited with code ${code}`));
+      }
+
+      const lines = stdout.trim().split('\n').filter(l => l.trim());
+      const jsonLine = lines[lines.length - 1];
+
+      try {
+        const result = JSON.parse(jsonLine);
+        const shows = result[venue] ?? [];
+        await saveShowsToDb(venue, shows);
+        console.log(`[${venue}] saved ${shows.length} shows to DB`);
+        resolve(shows);
+      } catch (e) {
+        reject(new Error(`Failed to parse JSON: ${e.message}`));
+      }
+    });
+
+    python.on('error', reject);
+  });
+}
+
+async function runBackgroundScrapers() {
+  console.log('Starting background scrape of all venues...');
+  for (const venue of VENUE_NAMES) {
+    try {
+      await scrapeVenue(venue);
+    } catch (err) {
+      console.error(`Background scrape failed for ${venue}:`, err.message);
+    }
+  }
+  console.log('Background scrape complete.');
 }
 
 // ---------------------------------------------------------------------------
@@ -73,110 +220,62 @@ function isCacheValid(venue) {
 // ---------------------------------------------------------------------------
 
 const app = express();
-
-// Serve everything in /public as static files (index.html, etc.)
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ---------------------------------------------------------------------------
-// Routes
-// ---------------------------------------------------------------------------
-
-/**
- * GET /api/venues
- * Returns the ordered list of available venue names.
- * The frontend uses this to build the venue-selector buttons.
- */
 app.get('/api/venues', (req, res) => {
   res.json(VENUE_NAMES);
 });
 
-/**
- * GET /api/scrape?venue=VenueName
- *
- * Scrapes one venue and returns:
- *   { venue: string, shows: Show[], cached: boolean }
- *
- * If a fresh cache entry exists it is returned immediately (cached: true).
- * Otherwise scrape_json.py is spawned as a child process.  The Python script
- * emits one JSON line to stdout; all other output (debug prints, cooldown
- * logs) goes to stderr and is logged here but ignored by the client.
- */
-app.get('/api/scrape', (req, res) => {
+app.get('/api/scrape', async (req, res) => {
   const venue = req.query.venue;
 
-  // Validate that the requested venue is in our allow-list.
   if (!venue || !VENUE_NAMES.includes(venue)) {
     return res.status(400).json({ error: 'Invalid or missing venue name.' });
   }
 
-  // Return cached result if still fresh.
-  if (isCacheValid(venue)) {
-    console.log(`[cache hit] ${venue}`);
-    return res.json({ venue, shows: cache[venue].data, cached: true });
-  }
+  try {
+    // Try to get from DB first, only shows from today onwards
+    const result = await pool.query(
+      'SELECT artist, opener, day_of_week as "dayOfWeek", day, month, doors_time as doors, ticket_link as link, is_sold_out as "isSoldOut" FROM shows WHERE venue_name = $1 AND (show_date >= CURRENT_DATE OR show_date IS NULL) ORDER BY show_date ASC, last_scraped_at DESC',
+      [venue]
+    );
 
-  console.log(`[scraping] ${venue}`);
-
-  // Spawn the Python scraper as a child process.
-  // cwd is set to __dirname so relative paths inside the Python scripts
-  // (cooldowns/, pages/) resolve correctly.
-  const python = spawn(
-    PYTHON,
-    [path.join(__dirname, 'scrape_json.py'), '--venues', venue],
-    { cwd: __dirname }
-  );
-
-  let stdout = '';
-  let stderr = '';
-
-  // Buffer all output; we process it once the process exits.
-  python.stdout.on('data', chunk => { stdout += chunk.toString(); });
-  python.stderr.on('data', chunk => { stderr += chunk.toString(); });
-
-  python.on('close', code => {
-    // Log any debug/error output from the Python side.
-    if (stderr.trim()) {
-      console.error(`[${venue} stderr]\n${stderr.trim()}`);
+    // If no data or data is older than 1 hour, trigger a scrape in background (optional)
+    // For now, if we have data, return it. If not, perform an initial scrape.
+    if (result.rows.length > 0) {
+      // Map DB rows back to the format the frontend expects
+      const shows = result.rows.map(row => ({
+        ...row,
+        link: row.isSoldOut ? 'SOLD OUT' : row.link
+      }));
+      return res.json({ venue, shows, cached: true });
     }
 
-    if (code !== 0) {
-      console.error(`[${venue}] scrape_json.py exited with code ${code}`);
-      return res.status(500).json({ error: 'Scraper process failed.', details: stderr });
-    }
-
-    // Parse the JSON object from the last non-empty line of stdout.
-    // (Earlier lines may contain stray print() output from venue classes.)
-    const lines = stdout.trim().split('\n').filter(l => l.trim());
-    const jsonLine = lines[lines.length - 1];
-
-    let result;
-    try {
-      result = JSON.parse(jsonLine);
-    } catch (e) {
-      console.error(`[${venue}] failed to parse JSON:`, e.message, '\nstdout was:', stdout);
-      return res.status(500).json({ error: 'Failed to parse scraper output.' });
-    }
-
-    const shows = result[venue] ?? [];
-
-    // Store in cache.
-    cache[venue] = { data: shows, timestamp: Date.now() };
-
-    console.log(`[${venue}] got ${shows.length} shows`);
+    // No data in DB, perform initial scrape
+    const shows = await scrapeVenue(venue);
     res.json({ venue, shows, cached: false });
-  });
-
-  // Handle spawn-level errors (e.g. python3 not found).
-  python.on('error', err => {
-    console.error(`[${venue}] failed to spawn python3:`, err);
-    res.status(500).json({ error: 'Could not start scraper.', details: err.message });
-  });
+  } catch (err) {
+    console.error('Route error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------
 
-app.listen(PORT, () => {
-  console.log(`DC Shows running at http://localhost:${PORT}`);
-});
+async function start() {
+  await initDb();
+  
+  // Start background scraper
+  setInterval(runBackgroundScrapers, SCRAPE_INTERVAL_MS);
+  
+  // Initial run (don't wait for it)
+  runBackgroundScrapers().catch(console.error);
+
+  app.listen(PORT, () => {
+    console.log(`DC Shows running at http://localhost:${PORT}`);
+  });
+}
+
+start();

@@ -1,5 +1,6 @@
 __pycache__/*.pyc
-cooldowns/*cooldown
-pages/Songbyrd
+cooldowns/
+pages/*
 .venv/
 node_modules/
+*_env.txt

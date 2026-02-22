@@ -13,11 +13,14 @@ class DC9(Venue):
             self.shows.append(self.parse_show(show))
 
     def parse_show(self, show):
+        print("***********")
+        print(show)
+        print("***********")
         show_dict = {}
         if 'dateTime' in show:
             dates = show['dateTime']
             if dates != "":
-                dates = dates[dates.index("<span>")+len("<span>"):dates.index("</span>", 2)]
+                dates = dates[dates.index(">")+len(">"):dates.index("<", 2)]
                 date = dates.split()
                 show_dict['dayOfWeek'] = date[0]
                 show_dict['day'] = date[2]
@@ -26,10 +29,12 @@ class DC9(Venue):
         if 'doors' in show:
             doors = show['doors']
             if doors is not None:
-                doors = doors.strip()
-                if doors != "":
-                    ds = doors.split()
-                    show_dict['doors'] = ds[1]
+                if doors:
+                    print("DOORS:", doors)
+                    doors = doors.strip()
+                    if doors != "":
+                        ds = doors.split()
+                        show_dict['doors'] = ds[1]
 
         artist_info = ""
         supports = []

@@ -10,46 +10,61 @@ class USP(Venue):
         super().__init__(url=URL+usp_ext, name=usp_name, cooldown=COOLDOWN, isUSP=True)
 
     def parse(self, soup):
-        # Overarching shows HTML: row row-cols-1 row-cols-md-2 row-cols-lg-3 row-cols-xl-3 g-4 tessera-card-deck
-        # Individual shows: <div class="col">
-        upcoming_shows = soup.select(".col")
+        # The USP site redesigned in early 2026. Shows are now <a class="show-card-link"> elements.
+        # Each show appears twice in the DOM (desktop + mobile card variants);
+        # only cards with a real /shows/... href are the primary entries.
+        upcoming_shows = soup.select(".show-card-link")
         for show in upcoming_shows:
-            if "text-center" not in show["class"]:
-                s = self.parse_show(show)
-                if "Private Event" not in s['artist']:
-                    self.shows.append(s)
+            href = show.get('href', '')
+            if not href.startswith('/shows/'):
+                continue
+            s = self.parse_show(show)
+            if "Private Event" not in s.get('artist', ''):
+                self.shows.append(s)
 
     def parse_show(self, show):
         show_dict = {}
-        dates = show.find(class_="date")
-        if dates is not None:
-            date = dates.text.strip().split()
-            show_dict['day'] = date[1]
-            show_dict['month'] = date[0]
-        
-        doors = show.find(class_="tessera-showTimes")
-        if doors is not None:
-            doors = doors.text.strip()
-            show_dict['doors'] = doors.split()[1]
 
-        artist_info = show.find(class_="card-title")
-        supports = show.find(class_="tessera-additionalArtists")
-        if artist_info is not None:
-            ai = artist_info.text.strip()
-            show_dict['artist'] = ai
-        if supports is not None:
-            opener = supports.text.strip()
-            show_dict['opener'] = opener
+        # --- Date ---
+        day_of_week = show.select_one('.event-day-day')
+        month       = show.select_one('.event-month')
+        day         = show.select_one('.event-day')
+        if day_of_week:
+            show_dict['dayOfWeek'] = day_of_week.text.strip()
+        if month:
+            show_dict['month'] = month.text.strip()
+        if day:
+            show_dict['day'] = day.text.strip()
 
-        sold_out = show.find("text", id="sold-out")
-        if sold_out is None:
-            ticket_price = show.find(class_="buy-now")
-            if ticket_price is not None:
-                if ticket_price.find("a") is not None:
-                    ticket_link = ticket_price.a['href']
-                    show_dict['link'] = ticket_link
-                else:
-                    show_dict['link'] = "N/A"
+        # --- Artist ---
+        artist_el = show.select_one('.show-card-header')
+        if artist_el:
+            show_dict['artist'] = artist_el.text.strip()
+
+        # --- Doors time ---
+        # The info footer has two .show-info blocks: venue/age-rating and the doors/show times.
+        # Find the block containing "DOORS" and extract the first time value.
+        for info_block in show.select('.show-info'):
+            if 'DOORS' in info_block.get_text():
+                for el in info_block.select('.base-text-size-caps'):
+                    # Time values have exactly one class; labels/separators have extra classes.
+                    if el.get('class') == ['base-text-size-caps']:
+                        t = el.text.strip()
+                        if t:
+                            show_dict['doors'] = t
+                            break
+                break
+
+        # --- Ticket link ---
+        # Tickets button has class w-condition-invisible when not available (sold out / private).
+        tickets_available = True
+        for btn in show.select('.text-block-60'):
+            if btn.text.strip() == 'Tickets' and 'w-condition-invisible' in btn.get('class', []):
+                tickets_available = False
+                break
+
+        if tickets_available:
+            show_dict['link'] = 'https://www.unionstagepresents.com' + show.get('href', '')
 
         return show_dict
 
