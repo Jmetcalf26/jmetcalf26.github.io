@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login / Register - DC Shows</title>
+  <style>
+    :root {
+      --bg: #0d0d0d;
+      --surface: #181818;
+      --surface-hover: #212121;
+      --border: #272727;
+      --text: #e4e4e4;
+      --text-muted: #666;
+      --accent: #c9a84c;
+      --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      --radius: 2px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+
+    .auth-container {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 2rem;
+      width: 100%;
+      max-width: 400px;
+      border-radius: var(--radius);
+    }
+
+    h1 {
+      font-size: 1.2rem;
+      margin-bottom: 1.5rem;
+      text-align: center;
+      color: var(--accent);
+    }
+
+    .form-group {
+      margin-bottom: 1rem;
+    }
+
+    label {
+      display: block;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+    }
+
+    input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px;
+      border-radius: var(--radius);
+      outline: none;
+    }
+
+    input:focus {
+      border-color: var(--accent);
+    }
+
+    button {
+      width: 100%;
+      background: var(--accent);
+      color: #000;
+      border: none;
+      padding: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      border-radius: var(--radius);
+      margin-top: 1rem;
+    }
+
+    button:hover {
+      opacity: 0.9;
+    }
+
+    .toggle-auth {
+      margin-top: 1.5rem;
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .toggle-auth span {
+      color: var(--accent);
+      cursor: pointer;
+      text-decoration: underline;
+    }
+
+    .error-msg {
+      color: #ff4444;
+      font-size: 0.8rem;
+      margin-bottom: 1rem;
+      text-align: center;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="auth-container">
+    <h1 id="authTitle">Login</h1>
+    <div id="errorMsg" class="error-msg"></div>
+    <form id="authForm">
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input type="text" id="username" required>
+      </div>
+      <div class="form-group" id="emailGroup" style="display: none;">
+        <label for="email">Email (Optional)</label>
+        <input type="email" id="email">
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" required>
+      </div>
+      <button type="submit" id="authSubmit">Login</button>
+    </form>
+    <div class="toggle-auth">
+      <p id="toggleText">Don't have an account? <span id="toggleAction">Register</span></p>
+    </div>
+    <div style="text-align: center; margin-top: 1rem;">
+        <a href="/" style="color: var(--text-muted); font-size: 0.75rem; text-decoration: none;">&larr; Back to Shows</a>
+    </div>
+  </div>
+
+  <script>
+    const authForm = document.getElementById('authForm');
+    const authTitle = document.getElementById('authTitle');
+    const authSubmit = document.getElementById('authSubmit');
+    const emailGroup = document.getElementById('emailGroup');
+    const errorMsg = document.getElementById('errorMsg');
+    const toggleText = document.getElementById('toggleText');
+
+    let isLogin = true;
+
+    toggleText.addEventListener('click', (e) => {
+      if (e.target.id === 'toggleAction') {
+        isLogin = !isLogin;
+        authTitle.textContent = isLogin ? 'Login' : 'Register';
+        authSubmit.textContent = isLogin ? 'Login' : 'Register';
+        emailGroup.style.display = isLogin ? 'none' : 'block';
+        toggleText.innerHTML = isLogin 
+          ? "Don't have an account? <span id=\"toggleAction\">Register</span>"
+          : "Already have an account? <span id=\"toggleAction\">Login</span>";
+      }
+    });
+
+    authForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorMsg.style.display = 'none';
+
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      const email = document.getElementById('email').value;
+
+      const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
+      const body = isLogin ? { username, password } : { username, password, email };
+
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+          if (isLogin) {
+            window.location.href = '/';
+          } else {
+            // After register, switch to login view
+            isLogin = true;
+            authTitle.textContent = 'Login';
+            authSubmit.textContent = 'Login';
+            emailGroup.style.display = 'none';
+            toggleText.innerHTML = "Don't have an account? <span id=\"toggleAction\">Register</span>";
+            
+            errorMsg.style.color = '#44ff44';
+            errorMsg.textContent = 'Account created! Please login.';
+            errorMsg.style.display = 'block';
+          }
+        } else {
+          errorMsg.textContent = data.error || 'Something went wrong';
+          errorMsg.style.display = 'block';
+          errorMsg.style.color = '#ff4444';
+        }
+      } catch (err) {
+        errorMsg.textContent = 'Connection error';
+        errorMsg.style.display = 'block';
+      }
+    });
+  </script>
+</body>
+</html>

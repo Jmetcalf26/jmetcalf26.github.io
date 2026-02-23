@@ -348,6 +348,36 @@
       text-transform: uppercase;
     }
 
+    .status-btns {
+      display: flex;
+      gap: 4px;
+      margin-top: 10px;
+    }
+
+    .status-btn {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 0.6rem;
+      padding: 2px 6px;
+      text-transform: uppercase;
+      transition: all 0.1s;
+    }
+
+    .status-btn:hover {
+      border-color: var(--text-muted);
+      color: var(--text);
+    }
+
+    .status-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #000;
+      font-weight: 700;
+    }
+
     /* -----------------------------------------------------------------------
        Loading skeleton — shimmer animation while scraper runs
     ----------------------------------------------------------------------- */
@@ -405,8 +435,9 @@
 </head>
 <body>
 
-  <header>
+  <header style="display: flex; justify-content: space-between; align-items: center;">
     <h1>DC Shows</h1>
+    <a href="/auth.html" id="accountLink" class="util-btn" style="text-decoration: none; padding: 4px 12px; font-size: 0.75rem;">Login / Register</a>
   </header>
 
   <div class="controls-container">
@@ -522,13 +553,21 @@
      */
     async function init() {
       try {
-        const [venuesRes, rangeRes] = await Promise.all([
+        const [venuesRes, rangeRes, userRes] = await Promise.all([
           fetch('/api/venues'),
-          fetch('/api/date-range')
+          fetch('/api/date-range'),
+          fetch('/api/auth/me')
         ]);
         
         allVenues = await venuesRes.json();
         const range = await rangeRes.json();
+        const user = await userRes.json();
+
+        if (user) {
+          const accountLink = document.getElementById('accountLink');
+          accountLink.textContent = 'Profile';
+          accountLink.href = '/profile.html';
+        }
         
         buildVenueSelector(allVenues);
         initDateSlider(range.min, range.max);
@@ -771,6 +810,15 @@
       const openerStr = formatOpener(show.opener);
       const ticketHtml = renderTicket(show.link);
       const venueName = VENUE_DISPLAY[show.venue] ?? show.venue;
+      
+      const isLoggedIn = document.getElementById('accountLink').textContent === 'Profile';
+      
+      const statusHtml = isLoggedIn ? `
+        <div class="status-btns">
+          <button class="status-btn ${show.userStatus === 'interested' ? 'active' : ''}" onclick="toggleStatus(${show.id}, 'interested', '${show.userStatus || ''}')">Interested</button>
+          <button class="status-btn ${show.userStatus === 'going' ? 'active' : ''}" onclick="toggleStatus(${show.id}, 'going', '${show.userStatus || ''}')">Going</button>
+        </div>
+      ` : '';
 
       return `
         <article class="show-card">
@@ -780,8 +828,23 @@
           ${show.doors ? `<div class="show-doors">Doors ${escHtml(show.doors)}</div>` : ''}
           ${openerStr  ? `<div class="show-opener">w/ ${escHtml(openerStr)}</div>` : ''}
           <div class="show-footer">${ticketHtml}</div>
+          ${statusHtml}
         </article>
       `;
+    }
+
+    async function toggleStatus(showId, targetStatus, currentStatus) {
+      const statusToSend = (targetStatus === currentStatus) ? null : targetStatus;
+      
+      const res = await fetch(`/api/user/shows/${showId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: statusToSend })
+      });
+      
+      if (res.ok) {
+        loadShows(); // Refresh to update button states
+      }
     }
 
     /**
