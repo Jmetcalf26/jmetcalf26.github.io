@@ -226,34 +226,70 @@ app.get('/api/venues', (req, res) => {
   res.json(VENUE_NAMES);
 });
 
-app.get('/api/scrape', async (req, res) => {
-  const venue = req.query.venue;
+app.get('/api/date-range', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT MIN(show_date) as min, MAX(show_date) as max FROM shows WHERE show_date >= CURRENT_DATE');
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Date range error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
-  if (!venue || !VENUE_NAMES.includes(venue)) {
-    return res.status(400).json({ error: 'Invalid or missing venue name.' });
+app.get('/api/scrape', async (req, res) => {
+  const venueParam = req.query.venue;
+  const searchQuery = req.query.search;
+  const startDate = req.query.startDate;
+  const endDate = req.query.endDate;
+
+  let venuesToQuery = [];
+  if (venueParam) {
+    // Handle both comma-separated and multiple query parameters
+    venuesToQuery = Array.isArray(venueParam) ? venueParam : venueParam.split(',');
+    venuesToQuery = venuesToQuery.filter(v => VENUE_NAMES.includes(v));
+  } else if (!searchQuery && !startDate && !endDate) {
+    return res.status(400).json({ error: 'Missing venue, search, or date query.' });
   }
 
   try {
-    // Try to get from DB first, only shows from today onwards
-    const result = await pool.query(
-      'SELECT artist, opener, day_of_week as "dayOfWeek", day, month, doors_time as doors, ticket_link as link, is_sold_out as "isSoldOut" FROM shows WHERE venue_name = $1 AND (show_date >= CURRENT_DATE OR show_date IS NULL) ORDER BY show_date ASC, last_scraped_at DESC',
-      [venue]
-    );
+    let query = 'SELECT artist, opener, day_of_week as "dayOfWeek", day, month, doors_time as doors, ticket_link as link, is_sold_out as "isSoldOut", venue_name as venue FROM shows WHERE (show_date >= CURRENT_DATE OR show_date IS NULL)';
+    const params = [];
 
-    // If no data or data is older than 1 hour, trigger a scrape in background (optional)
-    // For now, if we have data, return it. If not, perform an initial scrape.
-    if (result.rows.length > 0) {
-      // Map DB rows back to the format the frontend expects
-      const shows = result.rows.map(row => ({
-        ...row,
-        link: row.isSoldOut ? 'SOLD OUT' : row.link
-      }));
-      return res.json({ venue, shows, cached: true });
+    if (venuesToQuery.length > 0) {
+      const placeholders = venuesToQuery.map((_, i) => `$${params.length + i + 1}`).join(',');
+      query += ` AND venue_name IN (${placeholders})`;
+      params.push(...venuesToQuery);
     }
 
-    // No data in DB, perform initial scrape
-    const shows = await scrapeVenue(venue);
-    res.json({ venue, shows, cached: false });
+    if (searchQuery) {
+      query += ` AND (artist ILIKE $${params.length + 1} OR opener ILIKE $${params.length + 1})`;
+      params.push(`%${searchQuery}%`);
+    }
+
+    if (startDate) {
+      query += ` AND show_date >= $${params.length + 1}`;
+      params.push(startDate);
+    }
+
+    if (endDate) {
+      query += ` AND show_date <= $${params.length + 1}`;
+      params.push(endDate);
+    }
+
+    query += ' ORDER BY show_date ASC, last_scraped_at DESC';
+
+    const result = await pool.query(query, params);
+
+    // If a venue was specifically requested but has no data, we could trigger a scrape
+    // but for multi-venue/search, we'll just return what we have in the DB.
+    
+    // Map DB rows back to the format the frontend expects
+    const shows = result.rows.map(row => ({
+      ...row,
+      link: row.isSoldOut ? 'SOLD OUT' : row.link
+    }));
+    
+    return res.json({ shows, cached: true });
   } catch (err) {
     console.error('Route error:', err);
     res.status(500).json({ error: 'Internal server error' });

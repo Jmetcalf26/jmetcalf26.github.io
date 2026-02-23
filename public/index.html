@@ -61,11 +61,165 @@
     /* -----------------------------------------------------------------------
        Venue selector — scrollable row of pill buttons
     ----------------------------------------------------------------------- */
+    .controls-container {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .venue-selector-container {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .venue-utils {
+      display: flex;
+      gap: 6px;
+    }
+
+    .util-btn {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 0.65rem;
+      letter-spacing: 0.05em;
+      padding: 2px 8px;
+      text-transform: uppercase;
+      transition: background 0.12s, color 0.12s;
+    }
+
+    .util-btn:hover {
+      background: var(--surface-hover);
+      color: var(--text);
+      border-color: #404040;
+    }
+
     .venue-selector {
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
-      margin-bottom: 1.25rem;
+    }
+
+    .search-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.25rem;
+      align-items: flex-start;
+    }
+
+    .search-input-wrapper {
+      flex-grow: 1;
+      min-width: 200px;
+      max-width: 400px;
+    }
+
+    #searchInput {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 0.85rem;
+      padding: 8px 12px;
+      width: 100%;
+    }
+
+    .date-range {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-width: 280px;
+    }
+
+    .slider-labels {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .slider-labels input[type="date"] {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 0.7rem;
+      padding: 2px 4px;
+      outline: none;
+    }
+
+    .slider-labels input[type="date"]:focus {
+      border-color: var(--accent);
+    }
+
+    .range-slider-container {
+      position: relative;
+      height: 20px;
+      margin: 0 8px;
+    }
+
+    .range-slider-container input[type="range"] {
+      position: absolute;
+      width: 100%;
+      pointer-events: none;
+      -webkit-appearance: none;
+      appearance: none;
+      background: none;
+      z-index: 2;
+      height: 100%;
+      margin: 0;
+      outline: none;
+    }
+
+    .range-slider-container input[type="range"]::-webkit-slider-thumb {
+      pointer-events: all;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      -webkit-appearance: none;
+    }
+
+    .range-slider-container input[type="range"]::-moz-range-thumb {
+      pointer-events: all;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      border: none;
+    }
+
+    .slider-track {
+      position: absolute;
+      height: 4px;
+      width: 100%;
+      background: var(--border);
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 1;
+      border-radius: 2px;
+    }
+
+    .slider-range {
+      position: absolute;
+      height: 4px;
+      background: var(--accent);
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 1;
+      opacity: 0.3;
+    }
+
+    #searchInput:focus {
+      outline: none;
+      border-color: var(--accent);
     }
 
     .venue-btn {
@@ -255,8 +409,35 @@
     <h1>DC Shows</h1>
   </header>
 
-  <!-- Venue selector pills — populated by buildVenueSelector() -->
-  <nav class="venue-selector" id="venueSelector" aria-label="Venue selector"></nav>
+  <div class="controls-container">
+    <!-- Search Bar and Date Range -->
+    <div class="search-container">
+      <div class="search-input-wrapper">
+        <input type="text" id="searchInput" placeholder="Search artists or openers..." aria-label="Search shows">
+      </div>
+      <div class="date-range">
+        <div class="slider-labels">
+          <input type="date" id="dateInputMin" aria-label="Start date">
+          <input type="date" id="dateInputMax" aria-label="End date">
+        </div>
+        <div class="range-slider-container">
+          <div class="slider-track"></div>
+          <div id="sliderRange" class="slider-range"></div>
+          <input type="range" id="rangeMin" step="1">
+          <input type="range" id="rangeMax" step="1">
+        </div>
+      </div>
+    </div>
+
+    <!-- Venue selector pills — populated by buildVenueSelector() -->
+    <div class="venue-selector-container">
+      <div class="venue-utils">
+        <button class="util-btn" id="selectAllVenues">Select All</button>
+        <button class="util-btn" id="invertVenues">Invert Selection</button>
+      </div>
+      <nav class="venue-selector" id="venueSelector" aria-label="Venue selector"></nav>
+    </div>
+  </div>
 
   <!-- Status line shown below selector: "Loading…", "Showing cached results.", etc. -->
   <div class="status" id="status" aria-live="polite"></div>
@@ -304,8 +485,13 @@
     // State
     // =========================================================================
 
-    /** Currently selected venue class name, or null on first load. */
-    let activeVenue = null;
+    /** Set of currently selected venue class names. */
+    let selectedVenues = new Set();
+    let searchTerm = '';
+    let startDate = '';
+    let endDate = '';
+    let debounceTimer;
+    let minTimestamp, maxTimestamp;
 
     // =========================================================================
     // DOM references
@@ -314,6 +500,17 @@
     const venueSelector = document.getElementById('venueSelector');
     const showsGrid     = document.getElementById('showsGrid');
     const statusEl      = document.getElementById('status');
+    const searchInput   = document.getElementById('searchInput');
+    const rangeMinInput = document.getElementById('rangeMin');
+    const rangeMaxInput = document.getElementById('rangeMax');
+    const dateInputMin  = document.getElementById('dateInputMin');
+    const dateInputMax  = document.getElementById('dateInputMax');
+    const sliderRange   = document.getElementById('sliderRange');
+    const selectAllBtn  = document.getElementById('selectAllVenues');
+    const invertBtn     = document.getElementById('invertVenues');
+
+    /** List of all available venue class names. */
+    let allVenues = [];
 
     // =========================================================================
     // Initialisation
@@ -325,15 +522,120 @@
      */
     async function init() {
       try {
-        const res    = await fetch('/api/venues');
-        const venues = await res.json();
-        buildVenueSelector(venues);
+        const [venuesRes, rangeRes] = await Promise.all([
+          fetch('/api/venues'),
+          fetch('/api/date-range')
+        ]);
+        
+        allVenues = await venuesRes.json();
+        const range = await rangeRes.json();
+        
+        buildVenueSelector(allVenues);
+        initDateSlider(range.min, range.max);
 
-        if (venues.length > 0) {
-          selectVenue(venues[0]);
+        if (allVenues.length > 0) {
+          toggleVenue(allVenues[0]);
         }
+
+        searchInput.addEventListener('input', (e) => {
+          searchTerm = e.target.value;
+          clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => loadShows(), 300);
+        });
+
+        rangeMinInput.addEventListener('input', (e) => updateSliderUI(e));
+        rangeMinInput.addEventListener('change', () => loadShows());
+        rangeMaxInput.addEventListener('input', (e) => updateSliderUI(e));
+        rangeMaxInput.addEventListener('change', () => loadShows());
+
+        dateInputMin.addEventListener('change', (e) => {
+          const val = new Date(e.target.value).getTime();
+          if (!isNaN(val)) {
+            rangeMinInput.value = Math.max(minTimestamp, Math.min(val, parseInt(rangeMaxInput.value)));
+            updateSliderUI();
+            loadShows();
+          }
+        });
+
+        dateInputMax.addEventListener('change', (e) => {
+          const val = new Date(e.target.value).getTime();
+          if (!isNaN(val)) {
+            rangeMaxInput.value = Math.min(maxTimestamp, Math.max(val, parseInt(rangeMinInput.value)));
+            updateSliderUI();
+            loadShows();
+          }
+        });
+
+        selectAllBtn.addEventListener('click', () => {
+          selectedVenues = new Set(allVenues);
+          updateVenueButtons();
+          loadShows();
+        });
+
+        invertBtn.addEventListener('click', () => {
+          const nextSelection = new Set();
+          for (const v of allVenues) {
+            if (!selectedVenues.has(v)) nextSelection.add(v);
+          }
+          selectedVenues = nextSelection;
+          updateVenueButtons();
+          loadShows();
+        });
+
       } catch (e) {
         setStatus('Could not reach the server.');
+      }
+    }
+
+    function initDateSlider(min, max) {
+      if (!min || !max) return;
+      
+      const minD = new Date(min);
+      const maxD = new Date(max);
+      
+      minTimestamp = minD.getTime();
+      maxTimestamp = maxD.getTime();
+      
+      rangeMinInput.min = minTimestamp;
+      rangeMinInput.max = maxTimestamp;
+      rangeMinInput.value = minTimestamp;
+      
+      rangeMaxInput.min = minTimestamp;
+      rangeMaxInput.max = maxTimestamp;
+      rangeMaxInput.value = maxTimestamp;
+      
+      updateSliderUI();
+    }
+
+    function updateSliderUI(e) {
+      const minVal = parseInt(rangeMinInput.value);
+      const maxVal = parseInt(rangeMaxInput.value);
+      
+      // Prevent handles from crossing
+      if (minVal > maxVal) {
+        if (e && e.target.id === 'rangeMin') {
+          rangeMinInput.value = maxVal;
+        } else {
+          rangeMaxInput.value = minVal;
+        }
+      }
+      
+      const currentMin = parseInt(rangeMinInput.value);
+      const currentMax = parseInt(rangeMaxInput.value);
+      
+      startDate = new Date(currentMin).toISOString().split('T')[0];
+      endDate = new Date(currentMax).toISOString().split('T')[0];
+      
+      dateInputMin.value = startDate;
+      dateInputMax.value = endDate;
+      
+      const range = maxTimestamp - minTimestamp;
+      if (range > 0) {
+        const percentMin = ((currentMin - minTimestamp) / range) * 100;
+        const percentMax = ((currentMax - minTimestamp) / range) * 100;
+        
+        sliderRange.style.left = percentMin + '%';
+        sliderRange.style.width = (percentMax - percentMin) + '%';
       }
     }
 
@@ -352,26 +654,30 @@
         btn.className        = 'venue-btn';
         btn.textContent      = VENUE_DISPLAY[venue] ?? venue;
         btn.dataset.venue    = venue;
-        btn.addEventListener('click', () => selectVenue(venue));
+        btn.addEventListener('click', () => toggleVenue(venue));
         venueSelector.appendChild(btn);
       }
     }
 
     /**
-     * Activate a venue button and kick off a data load.
-     * No-op if the venue is already active.
+     * Toggle a venue in the selection and kick off a data load.
      * @param {string} venue  Venue class name.
      */
-    function selectVenue(venue) {
-      if (activeVenue === venue) return;
-      activeVenue = venue;
-
-      // Flip the active class on the buttons.
-      for (const btn of venueSelector.querySelectorAll('.venue-btn')) {
-        btn.classList.toggle('active', btn.dataset.venue === venue);
+    function toggleVenue(venue) {
+      if (selectedVenues.has(venue)) {
+        selectedVenues.delete(venue);
+      } else {
+        selectedVenues.add(venue);
       }
 
-      loadShows(venue);
+      updateVenueButtons();
+      loadShows();
+    }
+
+    function updateVenueButtons() {
+      for (const btn of venueSelector.querySelectorAll('.venue-btn')) {
+        btn.classList.toggle('active', selectedVenues.has(btn.dataset.venue));
+      }
     }
 
     // =========================================================================
@@ -379,16 +685,34 @@
     // =========================================================================
 
     /**
-     * Fetch shows for a single venue from /api/scrape.
-     * Shows a skeleton grid while waiting and displays results (or errors) on completion.
-     * @param {string} venue  Venue class name.
+     * Fetch shows for selected venues and search term.
      */
-    async function loadShows(venue) {
+    async function loadShows() {
+      if (selectedVenues.size === 0 && !searchTerm && !startDate && !endDate) {
+        showsGrid.innerHTML = '<div class="empty-msg">Select a venue, enter a search term, or specify a date range.</div>';
+        setStatus('');
+        return;
+      }
+
       setStatus('Loading\u2026');
       renderSkeleton();
 
       try {
-        const res = await fetch(`/api/scrape?venue=${encodeURIComponent(venue)}`);
+        const params = new URLSearchParams();
+        if (selectedVenues.size > 0) {
+          params.append('venue', Array.from(selectedVenues).join(','));
+        }
+        if (searchTerm) {
+          params.append('search', searchTerm);
+        }
+        if (startDate) {
+          params.append('startDate', startDate);
+        }
+        if (endDate) {
+          params.append('endDate', endDate);
+        }
+
+        const res = await fetch(`/api/scrape?${params.toString()}`);
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
@@ -399,7 +723,6 @@
 
         const { shows, cached } = await res.json();
 
-        // Show a subtle note when we returned a cached result
         setStatus(cached ? 'Showing cached results.' : '');
         renderShows(shows);
 
@@ -434,7 +757,7 @@
      */
     function renderShows(shows) {
       if (!shows || shows.length === 0) {
-        showsGrid.innerHTML = '<div class="empty-msg">No upcoming shows found.</div>';
+        showsGrid.innerHTML = '<div class="empty-msg">No matches found.</div>';
         return;
       }
       showsGrid.innerHTML = shows.map(renderCard).join('');
@@ -442,22 +765,16 @@
 
     /**
      * Build a single show card's HTML string.
-     *
-     * Handles edge cases across venues:
-     *  - DC9: opener is a string[] rather than a string
-     *  - Songbyrd: link is a dollar amount (number), not a URL
-     *  - USP: month is a text abbreviation, not a number
-     *
-     * @param  {Object} show  Show dict from the scraper.
-     * @returns {string}       HTML for one <article> card.
      */
     function renderCard(show) {
       const dateStr   = formatDate(show);
       const openerStr = formatOpener(show.opener);
       const ticketHtml = renderTicket(show.link);
+      const venueName = VENUE_DISPLAY[show.venue] ?? show.venue;
 
       return `
         <article class="show-card">
+          <div class="show-venue" style="color: var(--accent); font-size: 0.65rem; font-weight: 700; text-transform: uppercase; margin-bottom: 2px;">${escHtml(venueName)}</div>
           <div class="show-artist">${escHtml(show.artist ?? 'TBA')}</div>
           ${dateStr   ? `<div class="show-date">${escHtml(dateStr)}</div>` : ''}
           ${show.doors ? `<div class="show-doors">Doors ${escHtml(show.doors)}</div>` : ''}
