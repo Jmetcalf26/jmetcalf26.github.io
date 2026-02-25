@@ -8,12 +8,12 @@ presents upcoming DC area concert listings in a clean browser UI.
 ## How it works
 
 ```
-Browser  ←→  server.js (Express)  ←→  scrape_json.py  ←→  Venue classes
+Browser  ←→  server.js (Express)  ←→  scraping/scrape_json.py  ←→  Venue classes
 ```
 
 1. **`server.js`** serves the single-page frontend and exposes two JSON API routes.
 2. When the user clicks a venue, the browser calls `GET /api/scrape?venue=VenueName`.
-3. **`server.js`** spawns `scrape_json.py` as a child process with the venue name.
+3. **`server.js`** spawns `scraping/scrape_json.py` as a child process with the venue name.
 4. **`scrape_json.py`** imports the matching venue class, calls `getData()` → `parse()`,
    then serialises `venue.shows` to JSON on stdout.
 5. The server parses that JSON, caches it for 5 minutes, and returns it to the browser.
@@ -29,7 +29,7 @@ the same venue classes and adds JSON output + argument parsing.
 | File | Purpose |
 |---|---|
 | `server.js` | Express server — API routes, child-process spawning, in-memory cache |
-| `scrape_json.py` | Python wrapper — accepts `--venues` args, outputs one JSON line |
+| `scraping/scrape_json.py` | Python wrapper — accepts `--venues` args, outputs one JSON line |
 | `public/index.html` | Single-page frontend — venue selector, show cards, skeleton loader |
 | `package.json` | npm manifest — only dependency is Express |
 
@@ -95,8 +95,8 @@ npm run dev
 
 ## Adding a new venue
 
-1. Write the venue class in `MyVenue.py` following the existing `Venue` subclass pattern.
-2. Add it to `VENUE_MAP` in **`scrape_json.py`**.
+1. Write the venue class in `scraping/MyVenue.py` following the existing `Venue` subclass pattern.
+2. Add it to `VENUE_MAP` in **`scraping/scrape_json.py`**.
 3. Add its class name to `VENUE_NAMES` in **`server.js`**.
 4. Add a display name to `VENUE_DISPLAY` in **`public/index.html`**.
 
@@ -110,5 +110,5 @@ npm run dev
   frontend detects this and renders it as `$N` instead of a link.
 - DC9's `opener` field is a `string[]` rather than a plain string — the
   frontend joins the array with commas automatically.
-- Scrape cooldown files live in `cooldowns/` and are respected even when called
+- Scrape cooldown files live in `scraping/cooldowns/` and are respected even when called
   from the Node server (the Python side handles all rate limiting).

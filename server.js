@@ -11,6 +11,9 @@ const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
+const morgan = require('morgan');
+const rfs = require('rotating-file-stream');
+const fs = require('fs');
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -19,6 +22,16 @@ const cookieParser = require('cookie-parser');
 const PORT = process.env.PORT || 3000;
 const PYTHON = path.join(__dirname, '.venvs/CONCERT', 'bin', 'python3');
 const JWT_SECRET = process.env.JWT_SECRET || 'dc-shows-secret-key-change-me';
+
+// Ensure log directory exists
+const logDirectory = path.join(__dirname, 'logs');
+fs.existsSync(logDirectory) || fs.mkdirSync(logDirectory);
+
+// Create a rotating write stream
+const accessLogStream = rfs.createStream('access.log', {
+  interval: '1d', // rotate daily
+  path: logDirectory
+});
 
 // Database configuration from environment
 const pool = new Pool({
@@ -199,8 +212,8 @@ function scrapeVenue(venue) {
     console.log(`[scraping] ${venue}`);
     const python = spawn(
       PYTHON,
-      [path.join(__dirname, 'scrape_json.py'), '--venues', venue],
-      { cwd: __dirname }
+      [path.join(__dirname, 'scraping', 'scrape_json.py'), '--venues', venue],
+      { cwd: path.join(__dirname, 'scraping') }
     );
 
     let stdout = '';
@@ -256,6 +269,12 @@ const app = express();
 app.use(express.json());
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Setup log for all GET requests to a logfile rotated by the day
+app.use(morgan('combined', {
+  stream: accessLogStream,
+  skip: (req, res) => req.method !== 'GET'
+}));
 
 // Middleware to authenticate JWT
 function authenticateToken(req, res, next) {
