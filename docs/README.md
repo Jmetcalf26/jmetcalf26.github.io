@@ -8,6 +8,7 @@ Welcome to the documentation for the **DC Shows** repository. This project is a 
 *   **[Frontend Documentation](./FRONTEND.md)**: User interface structure, event handling, and client-side logic.
 *   **[API Reference](./API.md)**: Detailed breakdown of backend endpoints and their usage.
 *   **[Authentication](./AUTHENTICATION.md)**: How user accounts, sessions, and security are handled.
+*   **[Security Audit](./SECURITY.md)**: Current vulnerabilities and hardening recommendations.
 
 ## 🚀 Quick Start
 
