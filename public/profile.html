@@ -113,6 +113,73 @@
       background: #331111;
       color: #ff4444;
     }
+
+    .search-group {
+      position: relative;
+      margin-bottom: 1.5rem;
+    }
+
+    .search-group input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: var(--radius);
+      outline: none;
+      font-size: 0.85rem;
+      transition: border-color 0.1s;
+    }
+
+    .search-group input:focus {
+      border-color: var(--accent);
+    }
+
+    .search-results {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      margin-top: 4px;
+      max-height: 300px;
+      overflow-y: auto;
+      border: 1px solid #333;
+      border-radius: var(--radius);
+      background: #121212;
+      box-shadow: 0 8px 16px rgba(0,0,0,0.5);
+      z-index: 100;
+    }
+
+    .search-result-item {
+      padding: 10px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #222;
+      transition: background 0.1s;
+    }
+
+    .search-result-item:hover {
+      background: #1a1a1a;
+    }
+
+    .search-result-item:last-child {
+      border-bottom: none;
+    }
+
+    .friend-status {
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .searching-indicator {
+      padding: 10px 14px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-style: italic;
+    }
   </style>
 </head>
 <body>
@@ -137,8 +204,13 @@
     </div>
     <div class="side-col">
       <div class="section">
-        <h2>Friends</h2>
-        <div id="friendsList" class="friend-list">Feature coming soon...</div>
+        <h2>Find Friends</h2>
+        <div class="search-group">
+          <input type="text" id="friendSearchInput" placeholder="Search by username..." autocomplete="off">
+          <div id="friendSearchResults" class="search-results" style="display: none;"></div>
+        </div>
+        <h2>Your Friends</h2>
+        <div id="friendsList" class="friend-list">Loading...</div>
       </div>
       <div class="section">
         <h2>Friend Activity</h2>
@@ -150,6 +222,10 @@
   <script>
     const logoutBtn = document.getElementById('logoutBtn');
     const mainCol = document.querySelector('.main-col');
+    const friendSearchInput = document.getElementById('friendSearchInput');
+    const friendSearchResults = document.getElementById('friendSearchResults');
+    let searchDebounceTimer;
+    let currentUser = null;
 
     function getCookie(name) {
       const value = `; ${document.cookie}`;
@@ -174,16 +250,120 @@
         window.location.href = '/auth.html';
         return;
       }
+      currentUser = user;
 
       document.getElementById('welcomeUser').textContent = `Hi, ${escHtml(user.username)}`;
 
       loadUserContent();
+
+      friendSearchInput.addEventListener('input', (e) => {
+        const query = e.target.value.trim();
+        clearTimeout(searchDebounceTimer);
+        
+        if (query.length < 2) {
+          friendSearchResults.style.display = 'none';
+          return;
+        }
+
+        // Show searching indicator
+        friendSearchResults.innerHTML = '<div class="searching-indicator">Searching...</div>';
+        friendSearchResults.style.display = 'block';
+
+        searchDebounceTimer = setTimeout(() => searchUsers(query), 300);
+      });
+
+      // Use event delegation for search results
+      friendSearchResults.addEventListener('click', (e) => {
+        const btn = e.target.closest('.friend-action-btn');
+        if (btn) {
+          sendFriendRequest(btn.dataset.userId);
+        }
+      });
+
+      // Hide search results when clicking outside
+      document.addEventListener('click', (e) => {
+        if (!friendSearchInput.contains(e.target) && !friendSearchResults.contains(e.target)) {
+          friendSearchResults.style.display = 'none';
+        }
+      });
+    }
+
+    async function searchUsers(query) {
+      try {
+        const res = await fetch(`/api/users/search?query=${encodeURIComponent(query)}`);
+        const users = await res.json();
+        renderSearchResults(users);
+      } catch (err) {
+        console.error('Search error:', err);
+        friendSearchResults.innerHTML = '<div class="searching-indicator">Error searching users.</div>';
+      }
+    }
+
+    function renderSearchResults(users) {
+      if (users.length === 0) {
+        friendSearchResults.innerHTML = '<div style="padding: 10px; font-size: 0.8rem; color: var(--text-muted);">No users found.</div>';
+      } else {
+        friendSearchResults.innerHTML = users.map(user => {
+          let actionHtml = '';
+          if (user.friendship_status === 'accepted') {
+            actionHtml = '<span class="friend-status">Friends</span>';
+          } else if (user.friendship_status === 'pending') {
+            actionHtml = user.am_i_requester 
+              ? '<span class="friend-status">Request Sent</span>' 
+              : `<button class="util-btn friend-action-btn" data-user-id="${user.id}">Accept</button>`;
+          } else {
+            actionHtml = `<button class="util-btn friend-action-btn" data-user-id="${user.id}">Add Friend</button>`;
+          }
+
+          return `
+            <div class="search-result-item">
+              <span style="font-size: 0.85rem; font-weight: 500;">${escHtml(user.username)}</span>
+              ${actionHtml}
+            </div>
+          `;
+        }).join('');
+      }
+      friendSearchResults.style.display = 'block';
+    }
+
+    async function sendFriendRequest(friendId) {
+      try {
+        const res = await fetch(`/api/friends/request/${friendId}`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': getCookie('csrfToken')
+          }
+        });
+        if (res.ok) {
+          // Refresh search results if visible
+          if (friendSearchInput.value) searchUsers(friendSearchInput.value);
+          loadUserContent(); // Refresh friend list
+        }
+      } catch (err) {
+        console.error('Friend request error:', err);
+      }
+    }
+
+    async function deleteFriend(friendId) {
+      if (!confirm('Are you sure you want to remove this friend?')) return;
+      try {
+        const res = await fetch(`/api/friends/${friendId}`, {
+          method: 'DELETE',
+          headers: { 
+            'X-CSRF-Token': getCookie('csrfToken')
+          }
+        });
+        if (res.ok) {
+          loadUserContent();
+        }
+      } catch (err) {
+        console.error('Delete friend error:', err);
+      }
     }
 
     async function loadUserContent() {
       try {
-        // Since we don't have a specific "my shows" endpoint yet, 
-        // we can reuse the scrape endpoint with a special flag or just filter manually.
         const res = await fetch('/api/scrape?venue=NineThirty,Atlantis,DC9,Songbyrd,BlackCat,ThePocket,PieShop,UnionStage,JamminJava,CapitalTurnaround,TheHoward,MiracleTheatre,NatsPark,PearlStreet');
         const { shows } = await res.json();
 
@@ -193,14 +373,46 @@
         renderList('goingShows', going);
         renderList('interestedShows', interested);
 
-        const activityRes = await fetch('/api/friends/activity');
+        const [friendsRes, activityRes] = await Promise.all([
+          fetch('/api/friends'),
+          fetch('/api/friends/activity')
+        ]);
+        
+        const friends = await friendsRes.json();
         const activity = await activityRes.json();
+        
+        renderFriends(friends);
         renderActivity(activity);
 
       } catch (e) {
         console.error(e);
       }
     }
+
+    function renderFriends(friends) {
+      const el = document.getElementById('friendsList');
+      if (!friends || friends.length === 0) {
+        el.innerHTML = '<div style="color: var(--text-muted); font-size: 0.8rem; padding: 10px;">No friends yet.</div>';
+        return;
+      }
+      el.innerHTML = friends.map(f => `
+        <div class="friend-item" style="padding: 8px 0; border-bottom: 1px solid var(--border);">
+          <div>
+            <div>${escHtml(f.username)}</div>
+            <div class="friend-status" style="font-size: 0.6rem;">Member since ${new Date(f.created_at).getFullYear()}</div>
+          </div>
+          <button class="util-btn remove-friend-btn" data-friend-id="${f.id}" style="font-size: 0.6rem; padding: 2px 6px;">Remove</button>
+        </div>
+      `).join('');
+    }
+
+    // Event delegation for friends list actions
+    document.getElementById('friendsList').addEventListener('click', (e) => {
+      const btn = e.target.closest('.remove-friend-btn');
+      if (btn) {
+        deleteFriend(btn.dataset.friendId);
+      }
+    });
 
     function renderList(id, shows) {
       const el = document.getElementById(id);

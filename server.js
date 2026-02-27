@@ -114,6 +114,7 @@ async function initDb() {
         user_id1 INTEGER REFERENCES users(id) ON DELETE CASCADE,
         user_id2 INTEGER REFERENCES users(id) ON DELETE CASCADE,
         status TEXT CHECK (status IN ('pending', 'accepted')),
+        user_id1_is_requester BOOLEAN DEFAULT TRUE,
         PRIMARY KEY (user_id1, user_id2),
         CHECK (user_id1 < user_id2)
     );
@@ -441,17 +442,98 @@ app.post('/api/user/artists', authenticateToken, async (req, res, next) => {
   }
 });
 
+// Search for users to add as friends
+app.get('/api/users/search', authenticateToken, async (req, res, next) => {
+  const { query } = req.query;
+  const userId = req.user.id;
+
+  if (!query || query.length < 2) {
+    return res.json([]);
+  }
+
+  try {
+    // Search users, excluding self, and join with friendships to get current status
+    const result = await pool.query(`
+      SELECT u.id, u.username, f.status as friendship_status, 
+             CASE 
+               WHEN f.user_id1 = $1 THEN f.user_id1_is_requester
+               ELSE NOT f.user_id1_is_requester
+             END as am_i_requester
+      FROM users u
+      LEFT JOIN friendships f ON (
+        (f.user_id1 = $1 AND f.user_id2 = u.id) OR 
+        (f.user_id2 = $1 AND f.user_id1 = u.id)
+      )
+      WHERE u.username ILIKE $2 AND u.id != $1
+      LIMIT 10
+    `, [userId, `%${query}%`]);
+    
+    res.json(result.rows);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Friend requests / management
+app.get('/api/friends', authenticateToken, async (req, res, next) => {
+  const userId = req.user.id;
+  try {
+    const result = await pool.query(`
+      SELECT u.id, u.username, u.created_at
+      FROM users u
+      JOIN friendships f ON (f.user_id1 = u.id OR f.user_id2 = u.id)
+      WHERE (f.user_id1 = $1 OR f.user_id2 = $1) 
+      AND u.id != $1 
+      AND f.status = 'accepted'
+    `, [userId]);
+    res.json(result.rows);
+  } catch (err) {
+    next(err);
+  }
+});
+
 app.post('/api/friends/request/:friendId', authenticateToken, async (req, res, next) => {
+  const userId = req.user.id;
+  const friendId = parseInt(req.params.friendId);
+  if (userId === friendId) return res.status(400).json({ error: 'Cannot friend yourself' });
+  const [id1, id2] = [userId, friendId].sort((a, b) => a - b);
+  
+  try {
+    // Check if a relationship already exists
+    const check = await pool.query('SELECT * FROM friendships WHERE user_id1 = $1 AND user_id2 = $2', [id1, id2]);
+    
+    if (check.rows.length === 0) {
+      // Create new pending request
+      await pool.query(
+        'INSERT INTO friendships (user_id1, user_id2, status, user_id1_is_requester) VALUES ($1, $2, $3, $4)',
+        [id1, id2, 'pending', userId === id1]
+      );
+    } else {
+      const relationship = check.rows[0];
+      if (relationship.status === 'pending') {
+        // If the other person requested, accept it
+        const wasRequestedByOther = (relationship.user_id1_is_requester && userId === id2) || 
+                                    (!relationship.user_id1_is_requester && userId === id1);
+        
+        if (wasRequestedByOther) {
+          await pool.query('UPDATE friendships SET status = $1 WHERE user_id1 = $2 AND user_id2 = $3', ['accepted', id1, id2]);
+        }
+      }
+    }
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Delete a friendship
+app.delete('/api/friends/:friendId', authenticateToken, async (req, res, next) => {
   const userId = req.user.id;
   const friendId = parseInt(req.params.friendId);
   const [id1, id2] = [userId, friendId].sort((a, b) => a - b);
   
   try {
-    await pool.query(
-      'INSERT INTO friendships (user_id1, user_id2, status) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
-      [id1, id2, 'pending']
-    );
+    await pool.query('DELETE FROM friendships WHERE user_id1 = $1 AND user_id2 = $2', [id1, id2]);
     res.json({ success: true });
   } catch (err) {
     next(err);
