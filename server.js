@@ -319,14 +319,13 @@ app.get('/api/venues', (req, res) => {
   res.json(VENUE_NAMES);
 });
 
-app.get('/api/date-range', async (req, res) => {
+app.get('/api/date-range', async (req, res, next) => {
   try {
     setCsrfCookie(res);
     const result = await pool.query('SELECT MIN(show_date) as min, MAX(show_date) as max FROM shows WHERE show_date >= CURRENT_DATE');
     res.json(result.rows[0]);
   } catch (err) {
-    console.error('Date range error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    next(err);
   }
 });
 
@@ -350,7 +349,7 @@ function authenticateToken(req, res, next) {
 
 // --- Auth Routes ---
 
-app.post('/api/auth/register', authLimiter, async (req, res) => {
+app.post('/api/auth/register', authLimiter, async (req, res, next) => {
   const { username, password, email } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
 
@@ -364,12 +363,11 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     res.status(201).json(result.rows[0]);
   } catch (err) {
     if (err.code === '23505') return res.status(400).json({ error: 'Username or email already exists' });
-    console.error(err);
-    res.status(500).json({ error: 'Registration failed' });
+    next(err);
   }
 });
 
-app.post('/api/auth/login', authLimiter, async (req, res) => {
+app.post('/api/auth/login', authLimiter, async (req, res, next) => {
   const { username, password } = req.body;
   try {
     const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
@@ -388,8 +386,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
     setCsrfCookie(res);
     res.json({ id: user.id, username: user.username });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Login failed' });
+    next(err);
   }
 });
 
@@ -412,7 +409,7 @@ app.get('/api/auth/me', (req, res) => {
 // --- Account / Social Routes ---
 
 // Update show status (interested/going)
-app.post('/api/user/shows/:showId', authenticateToken, async (req, res) => {
+app.post('/api/user/shows/:showId', authenticateToken, async (req, res, next) => {
   const { status } = req.body; // 'interested', 'going', or null to remove
   const { showId } = req.params;
   const userId = req.user.id;
@@ -428,25 +425,24 @@ app.post('/api/user/shows/:showId', authenticateToken, async (req, res) => {
     }
     res.json({ success: true });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to update show status' });
+    next(err);
   }
 });
 
 // Add favorite artist
-app.post('/api/user/artists', authenticateToken, async (req, res) => {
+app.post('/api/user/artists', authenticateToken, async (req, res, next) => {
   const { artistName } = req.body;
   const userId = req.user.id;
   try {
     await pool.query('INSERT INTO user_artists (user_id, artist_name) VALUES ($1, $2) ON CONFLICT DO NOTHING', [userId, artistName]);
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to add artist' });
+    next(err);
   }
 });
 
 // Friend requests / management
-app.post('/api/friends/request/:friendId', authenticateToken, async (req, res) => {
+app.post('/api/friends/request/:friendId', authenticateToken, async (req, res, next) => {
   const userId = req.user.id;
   const friendId = parseInt(req.params.friendId);
   const [id1, id2] = [userId, friendId].sort((a, b) => a - b);
@@ -458,12 +454,12 @@ app.post('/api/friends/request/:friendId', authenticateToken, async (req, res) =
     );
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to send friend request' });
+    next(err);
   }
 });
 
 // Get friend activity
-app.get('/api/friends/activity', authenticateToken, async (req, res) => {
+app.get('/api/friends/activity', authenticateToken, async (req, res, next) => {
   const userId = req.user.id;
   try {
     const result = await pool.query(`
@@ -478,12 +474,11 @@ app.get('/api/friends/activity', authenticateToken, async (req, res) => {
     `, [userId]);
     res.json(result.rows);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to fetch friend activity' });
+    next(err);
   }
 });
 
-app.get('/api/scrape', async (req, res) => {
+app.get('/api/scrape', async (req, res, next) => {
   const venueParam = req.query.venue;
   const searchQuery = req.query.search;
   const startDate = req.query.startDate;
@@ -551,9 +546,24 @@ app.get('/api/scrape', async (req, res) => {
     
     return res.json({ shows, cached: true });
   } catch (err) {
-    console.error('Route error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    next(err);
   }
+});
+
+// --- Global Error Handler ---
+
+app.use((err, req, res, next) => {
+  // Log the full error internally
+  console.error(`[Error] ${req.method} ${req.path} >>`, err);
+
+  // Send a generic message to the client
+  const status = err.status || 500;
+  const message = (status === 500) ? 'Internal Server Error' : err.message;
+  
+  res.status(status).json({ 
+    error: message,
+    timestamp: new Date().toISOString()
+  });
 });
 
 // ---------------------------------------------------------------------------

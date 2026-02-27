@@ -25,6 +25,7 @@ The following security measures have been implemented and verified:
 *   **XSS Protection**:
     *   Strict use of `escHtml` for all dynamic data rendering.
     *   Removed inline event handlers (`onclick`) in favor of secure event delegation.
+*   **Global Error Handler**: Centralized middleware to log errors internally while returning sanitized, generic responses to clients to prevent system leakage.
 *   **SQL Injection Protection**: Parameterized queries used for all database interactions.
 *   **Environment Security**: All sensitive secrets are externalized and excluded from source control via `.gitignore`.
 
