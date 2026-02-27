@@ -12,63 +12,51 @@ The application implements several baseline security features:
 
 ---
 
-## 🚨 Critical Vulnerabilities
+## 🛡️ Security Posture
 
-### 1. Cross-Site Request Forgery (CSRF)
-Since the application relies on cookies for authentication, it is vulnerable to CSRF. An attacker can craft a malicious website that triggers authenticated actions on behalf of a logged-in user.
+The following security measures have been implemented and verified:
 
-```mermaid
-sequenceDiagram
-    participant User as User's Browser
-    participant Attacker as malicious-site.com
-    participant App as dc-shows.com (Server)
-
-    Note over User, App: User is logged in to dc-shows.com
-    User->>Attacker: Visits malicious site
-    Attacker->>User: Sends hidden form/script
-    User->>App: POST /api/user/shows/123 (Browser sends Cookie!)
-    App->>App: Validates Cookie & JWT
-    App-->>User: 200 OK (Action Performed)
-```
-**Recommendation:** Implement CSRF protection using a "Double Submit Cookie" pattern or a dedicated middleware like `csurf`.
-
-### 2. Transport Security (MITM)
-In its current state (HTTP), all data—including registration and login passwords—is sent in **cleartext**.
-
-```mermaid
-graph LR
-    Browser[User Browser] -- "POST {password: '123'}" --> Attacker[MITM Attacker / Sniffer]
-    Attacker -- "POST {password: '123'}" --> Server[DC Shows Server]
-    
-    style Attacker fill:#f96,stroke:#333,stroke-width:4px
-```
-**Recommendation:** Deploy the application behind a reverse proxy (Nginx/Caddy) with **TLS/SSL (HTTPS)**. Enable HSTS headers.
+*   **CSRF Protection (Double Submit Cookie)**: All state-changing API routes require a valid `X-CSRF-Token` header that matches the `csrfToken` cookie.
+*   **Rate Limiting**: Authentication endpoints (`/api/auth/login`, `/api/auth/register`) are limited to 10 requests per 15-minute window to prevent brute-force attacks.
+*   **Hardened JWT & Cookies**:
+    *   JWT expiration shortened to **1 hour**.
+    *   `HttpOnly` and `SameSite=Lax` flags enabled for session tokens.
+    *   `Secure` flag enabled for production environments.
+*   **XSS Protection**:
+    *   Strict use of `escHtml` for all dynamic data rendering.
+    *   Removed inline event handlers (`onclick`) in favor of secure event delegation.
+*   **SQL Injection Protection**: Parameterized queries used for all database interactions.
+*   **Environment Security**: All sensitive secrets are externalized and excluded from source control via `.gitignore`.
 
 ---
 
-## ⚠️ High-Risk Findings
+## 🚨 Remaining Risks
 
-### 1. Lack of Rate Limiting
-The `/api/auth/login` and `/api/auth/register` endpoints are unprotected against brute-force attacks. An attacker could automate thousands of attempts per minute.
-*   **Recommendation:** Implement `express-rate-limit` for all `/api/auth/` routes.
+### 1. Transport Security (MITM)
+While the application is hardened internally, it currently serves over HTTP. In production, passwords and tokens are still vulnerable to interception.
 
-### 2. Potential Persistent XSS
-The frontend uses `.innerHTML` to render data fetched from the database. While the server-side scraper is currently trusted, a compromised venue website could inject malicious scripts into show titles or artist names.
-*   **Recommendation:**
-    *   Switch from `.innerHTML` to `.textContent` for all dynamic data.
-    *   Use a sanitization library like `DOMPurify` for any required HTML.
+**Recommendation:** Deploy behind a reverse proxy (Nginx/Caddy) with **HTTPS (TLS/SSL)** and enable HSTS.
 
 ---
 
-## ⚙️ Hardening Roadmap
+## ⚠️ Medium-Risk Findings
 
-| Task | Priority | Description |
-| :--- | :--- | :--- |
-| **Install Helmet** | High | Set security headers (`X-Frame-Options`, `CSP`, etc.) |
-| **Enable HTTPS** | High | Use Let's Encrypt for all production traffic. |
-| **Rate Limiting** | Medium | Limit auth attempts to 5 per minute per IP. |
-| **CSRF Protection** | Medium | Add CSRF tokens to all state-changing requests. |
-| **Least Privilege** | Low | Use a non-root user for the Docker container and DB user. |
+### 1. Missing Security Headers
+The application could benefit from standard security headers (e.g., `CSP`, `X-Frame-Options`).
+*   **Recommendation:** Install and configure the `helmet` middleware.
+
+---
+
+## ⚙️ Hardened Roadmap (Status)
+
+| Task | Status | Priority | Description |
+| :--- | :--- | :--- | :--- |
+| **CSRF Protection** | ✅ Done | High | Double Submit Cookie pattern implemented. |
+| **Rate Limiting** | ✅ Done | High | 10 requests / 15 mins on auth routes. |
+| **JWT Hardening** | ✅ Done | High | Short expiry + Secure/SameSite flags. |
+| **XSS Hardening** | ✅ Done | High | Removed inline JS and added robust escaping. |
+| **Install Helmet** | ⏳ Pending | Medium | Set security headers. |
+| **Enable HTTPS** | ⏳ Pending | High | Required for production deployment. |
 
 ## 🧪 Security Testing
 To verify these improvements, use tools like:

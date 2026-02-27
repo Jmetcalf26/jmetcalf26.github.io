@@ -815,8 +815,8 @@
       
       const statusHtml = isLoggedIn ? `
         <div class="status-btns">
-          <button class="status-btn ${show.userStatus === 'interested' ? 'active' : ''}" onclick="toggleStatus(${show.id}, 'interested', '${show.userStatus || ''}')">Interested</button>
-          <button class="status-btn ${show.userStatus === 'going' ? 'active' : ''}" onclick="toggleStatus(${show.id}, 'going', '${show.userStatus || ''}')">Going</button>
+          <button class="status-btn ${show.userStatus === 'interested' ? 'active' : ''}" data-show-id="${show.id}" data-status="interested" data-current="${show.userStatus || ''}">Interested</button>
+          <button class="status-btn ${show.userStatus === 'going' ? 'active' : ''}" data-show-id="${show.id}" data-status="going" data-current="${show.userStatus || ''}">Going</button>
         </div>
       ` : '';
 
@@ -833,12 +833,24 @@
       `;
     }
 
+    // Use event delegation for status buttons
+    showsGrid.addEventListener('click', (e) => {
+      const btn = e.target.closest('.status-btn');
+      if (btn) {
+        const { showId, status, current } = btn.dataset;
+        toggleStatus(showId, status, current);
+      }
+    });
+
     async function toggleStatus(showId, targetStatus, currentStatus) {
       const statusToSend = (targetStatus === currentStatus) ? null : targetStatus;
       
       const res = await fetch(`/api/user/shows/${showId}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': getCookie('csrfToken')
+        },
         body: JSON.stringify({ status: statusToSend })
       });
       
@@ -934,6 +946,13 @@
         .replace(/>/g,  '&gt;')
         .replace(/"/g,  '&quot;')
         .replace(/'/g,  '&#39;');
+    }
+
+    function getCookie(name) {
+      const value = `; ${document.cookie}`;
+      const parts = value.split(`; ${name}=`);
+      if (parts.length === 2) return parts.pop().split(';').shift();
+      return '';
     }
 
     /**

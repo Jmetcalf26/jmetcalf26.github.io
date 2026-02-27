@@ -14,6 +14,8 @@ const cookieParser = require('cookie-parser');
 const morgan = require('morgan');
 const rfs = require('rotating-file-stream');
 const fs = require('fs');
+const rateLimit = require('express-rate-limit');
+const crypto = require('crypto');
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -21,7 +23,7 @@ const fs = require('fs');
 
 const PORT = process.env.PORT || 3000;
 const PYTHON = path.join(__dirname, '.venvs/CONCERT', 'bin', 'python3');
-const JWT_SECRET = process.env.JWT_SECRET || 'dc-shows-secret-key-change-me';
+const JWT_SECRET = process.env.JWT_SECRET;
 
 // Ensure log directory exists
 const logDirectory = path.join(__dirname, 'logs');
@@ -270,6 +272,64 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Rate Limiter for Authentication
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // Limit each IP to 10 requests per windowMs
+  message: { error: 'Too many authentication attempts, please try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Middleware to verify CSRF token (Double Submit Cookie)
+function checkCsrf(req, res, next) {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  
+  // Exempt login and register from CSRF check as they are entry points
+  if (req.path === '/api/auth/login' || req.path === '/api/auth/register') {
+    return next();
+  }
+
+  const cookieToken = req.cookies.csrfToken;
+  const headerToken = req.headers['x-csrf-token'];
+  if (!cookieToken || cookieToken !== headerToken) {
+    return res.status(403).json({ error: 'CSRF validation failed' });
+  }
+  next();
+}
+
+// Function to set CSRF cookie
+function setCsrfCookie(res) {
+  const token = crypto.randomBytes(32).toString('hex');
+  res.cookie('csrfToken', token, { 
+    httpOnly: false, // Must be readable by frontend JS
+    secure: process.env.NODE_ENV === 'production', 
+    sameSite: 'lax' 
+  });
+  return token;
+}
+
+// Apply CSRF protection to state-changing routes
+app.use('/api', checkCsrf);
+
+// --- Public Data Routes ---
+
+app.get('/api/venues', (req, res) => {
+  setCsrfCookie(res);
+  res.json(VENUE_NAMES);
+});
+
+app.get('/api/date-range', async (req, res) => {
+  try {
+    setCsrfCookie(res);
+    const result = await pool.query('SELECT MIN(show_date) as min, MAX(show_date) as max FROM shows WHERE show_date >= CURRENT_DATE');
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Date range error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Setup log for all GET requests to a logfile rotated by the day
 app.use(morgan('combined', {
   stream: accessLogStream,
@@ -290,7 +350,7 @@ function authenticateToken(req, res, next) {
 
 // --- Auth Routes ---
 
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', authLimiter, async (req, res) => {
   const { username, password, email } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
 
@@ -300,6 +360,7 @@ app.post('/api/auth/register', async (req, res) => {
       'INSERT INTO users (username, password_hash, email) VALUES ($1, $2, $3) RETURNING id, username',
       [username, passwordHash, email]
     );
+    setCsrfCookie(res);
     res.status(201).json(result.rows[0]);
   } catch (err) {
     if (err.code === '23505') return res.status(400).json({ error: 'Username or email already exists' });
@@ -308,7 +369,7 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authLimiter, async (req, res) => {
   const { username, password } = req.body;
   try {
     const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
@@ -317,8 +378,14 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
-    res.cookie('token', token, { httpOnly: true, maxAge: 7 * 24 * 60 * 60 * 1000 });
+    const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '1h' });
+    res.cookie('token', token, { 
+      httpOnly: true, 
+      maxAge: 3600000, 
+      secure: process.env.NODE_ENV === 'production', 
+      sameSite: 'lax' 
+    });
+    setCsrfCookie(res);
     res.json({ id: user.id, username: user.username });
   } catch (err) {
     console.error(err);
@@ -328,6 +395,7 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.post('/api/auth/logout', (req, res) => {
   res.clearCookie('token');
+  res.clearCookie('csrfToken');
   res.json({ message: 'Logged out' });
 });
 
@@ -336,22 +404,9 @@ app.get('/api/auth/me', (req, res) => {
   if (!token) return res.json(null);
   jwt.verify(token, JWT_SECRET, (err, user) => {
     if (err) return res.json(null);
+    setCsrfCookie(res);
     res.json(user);
   });
-});
-
-app.get('/api/venues', (req, res) => {
-  res.json(VENUE_NAMES);
-});
-
-app.get('/api/date-range', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT MIN(show_date) as min, MAX(show_date) as max FROM shows WHERE show_date >= CURRENT_DATE');
-    res.json(result.rows[0]);
-  } catch (err) {
-    console.error('Date range error:', err);
-    res.status(500).json({ error: 'Internal server error' });
-  }
 });
 
 // --- Account / Social Routes ---

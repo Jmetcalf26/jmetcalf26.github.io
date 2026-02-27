@@ -148,6 +148,25 @@
   </div>
 
   <script>
+    const logoutBtn = document.getElementById('logoutBtn');
+    const mainCol = document.querySelector('.main-col');
+
+    function getCookie(name) {
+      const value = `; ${document.cookie}`;
+      const parts = value.split(`; ${name}=`);
+      if (parts.length === 2) return parts.pop().split(';').shift();
+      return '';
+    }
+
+    function escHtml(str) {
+      return String(str || '')
+        .replace(/&/g,  '&amp;')
+        .replace(/</g,  '&lt;')
+        .replace(/>/g,  '&gt;')
+        .replace(/"/g,  '&quot;')
+        .replace(/'/g,  '&#39;');
+    }
+
     async function init() {
       const userRes = await fetch('/api/auth/me');
       const user = await userRes.json();
@@ -156,7 +175,7 @@
         return;
       }
 
-      document.getElementById('welcomeUser').textContent = `Hi, ${user.username}`;
+      document.getElementById('welcomeUser').textContent = `Hi, ${escHtml(user.username)}`;
 
       loadUserContent();
     }
@@ -165,10 +184,6 @@
       try {
         // Since we don't have a specific "my shows" endpoint yet, 
         // we can reuse the scrape endpoint with a special flag or just filter manually.
-        // For this demo, let's assume we can fetch all shows and filter by userStatus.
-        // In a real app, you'd want /api/user/my-shows.
-        
-        // Let's implement a simple version that fetches from /api/scrape for all venues
         const res = await fetch('/api/scrape?venue=NineThirty,Atlantis,DC9,Songbyrd,BlackCat,ThePocket,PieShop,UnionStage,JamminJava,CapitalTurnaround,TheHoward,MiracleTheatre,NatsPark,PearlStreet');
         const { shows } = await res.json();
 
@@ -190,27 +205,38 @@
     function renderList(id, shows) {
       const el = document.getElementById(id);
       if (shows.length === 0) {
-        el.innerHTML = '<div class="text-muted">No shows found.</div>';
+        el.innerHTML = '<div style="color: var(--text-muted); font-size: 0.8rem; padding: 10px;">No shows found.</div>';
         return;
       }
       el.innerHTML = shows.map(s => `
         <div class="show-item">
           <div>
-            <div class="show-venue">${s.venue}</div>
-            <div class="show-info">${s.artist}</div>
+            <div class="show-venue">${escHtml(s.venue)}</div>
+            <div class="show-info">${escHtml(s.artist)}</div>
           </div>
           <div style="display: flex; align-items: center; gap: 15px;">
-            <div style="font-size: 0.75rem; color: var(--text-muted);">${s.month} ${s.day}</div>
-            <button class="util-btn remove-btn" onclick="removeStatus(${s.id})">Remove</button>
+            <div style="font-size: 0.75rem; color: var(--text-muted);">${escHtml(s.month)} ${escHtml(s.day)}</div>
+            <button class="util-btn remove-btn" data-show-id="${s.id}">Remove</button>
           </div>
         </div>
       `).join('');
     }
 
+    // Use event delegation for remove buttons
+    mainCol.addEventListener('click', (e) => {
+      const btn = e.target.closest('.remove-btn');
+      if (btn) {
+        removeStatus(btn.dataset.showId);
+      }
+    });
+
     async function removeStatus(showId) {
       const res = await fetch(`/api/user/shows/${showId}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': getCookie('csrfToken')
+        },
         body: JSON.stringify({ status: null })
       });
       
@@ -222,19 +248,22 @@
     function renderActivity(activity) {
       const el = document.getElementById('friendActivity');
       if (!activity || activity.length === 0) {
-        el.innerHTML = '<div class="text-muted">No recent activity.</div>';
+        el.innerHTML = '<div style="color: var(--text-muted); font-size: 0.8rem; padding: 10px;">No recent activity.</div>';
         return;
       }
       el.innerHTML = activity.map(a => `
         <div class="show-item" style="flex-direction: column; align-items: flex-start;">
-          <div style="font-size: 0.8rem;"><strong style="color: var(--accent);">${a.username}</strong> is ${a.status}</div>
-          <div style="font-size: 0.75rem;">${a.artist} @ ${a.venue_name}</div>
+          <div style="font-size: 0.8rem;"><strong style="color: var(--accent);">${escHtml(a.username)}</strong> is ${escHtml(a.status)}</div>
+          <div style="font-size: 0.75rem;">${escHtml(a.artist)} @ ${escHtml(a.venue_name)}</div>
         </div>
       `).join('');
     }
 
-    document.getElementById('logoutBtn').addEventListener('click', async () => {
-      await fetch('/api/auth/logout', { method: 'POST' });
+    logoutBtn.addEventListener('click', async () => {
+      await fetch('/api/auth/logout', { 
+        method: 'POST',
+        headers: { 'X-CSRF-Token': getCookie('csrfToken') }
+      });
       window.location.href = '/';
     });
 
